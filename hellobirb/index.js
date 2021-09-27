@@ -1,20 +1,24 @@
-import { Client, Intents, TextChannel } from "discord.js";
+import { Client, Intents } from "discord.js";
 import { config as dotEnvConfig } from "dotenv";
 import { readFileSync } from "fs";
 import { writeFile } from "fs/promises";
+import * as http from "http";
 
 import pkg from "date-fns-tz";
 const { utcToZonedTime } = pkg;
 
-// TODO Make this less of a tire fire, code-wise.
+const greetingDelayMs = 3000;
+const lastSeenDBFileName = "last-seen.json";
+
+// TODO
+// * Make this a bit more sane, code-wise.
+// * SQLite last-seen database?
 
 // Build a time-aware greeting for the user who has just joined.
 // Does not take into account the user's local time, but there
 // doesn't appear to be any timezone data available for Discord
 // users.
-function buildGreeting(user, channel, now) {
-  console.log(channel);
-  console.log(channel.members);
+function buildGreeting(user, channel, now, mondayMorningAddendum) {
   const hour = now.getHours();
   const isLateNight = hour < 5;
   const isMorning = hour >= 5 && hour < 12;
@@ -32,78 +36,78 @@ function buildGreeting(user, channel, now) {
     greeting = `Good evening, ${mention}!`;
   }
   if (now.getDay() === 1 && isMorning && mondayMorningAddendum) {
-    greeting += mondayMorningAddendum;
+    greeting += " " + mondayMorningAddendum;
   }
-  const richMsg = {
-    content: greeting,
-    embeds: [{ thumbnail: { url: "attachment://static/birb.jpg" } }],
-  };
   if (channel.members.size === 1) {
-    richMsg.embeds[0].footer = "You're the first one here.";
+    greeting += " You're the first one here.";
   }
   return greeting;
 }
 
-function initClient(
-  watchChannelId,
-  announceChannelId,
-  mondayMorningAddendum,
-  botTimeZone
-) {
-  console.log(
-    `initializing bot: watching channel ${watchChannelId} and announcing on ${announceChannelId}`
-  );
-  const lastSeenDBFileName = "last-seen.json";
+// Load the last-seen database, which is currently a janky JSON
+// file. This is fine for low volume usage, though, and simpler
+// than trying to connect with an actual database.
+function loadLastSeenDB() {
   let lastSeenDB = {};
   try {
     lastSeenDB = JSON.parse(readFileSync(lastSeenDBFileName));
   } catch (ex) {
     console.error(`unable to read file of last-seen records: ${ex}`);
+  } finally {
+    return lastSeenDB;
   }
+}
 
-  // Create a new client instance.
-  const botIntents = new Intents();
-  botIntents.add(Intents.FLAGS.GUILD_VOICE_STATES);
-  const client = new Client({ intents: botIntents });
+// Update last seen entry for this guild member. Will still return
+// an in-memory database even if the database cannot be persisted.
+function updateLastSeenDB(lastSeenDB, guildMemberId, now) {
+  lastSeenDB[guildMemberId] = now;
+  writeFile(lastSeenDBFileName, JSON.stringify(lastSeenDB))
+    .then(() =>
+      console.log(
+        `updated last seen database for guild member ID ${guildMemberId}`
+      )
+    )
+    .catch((err) =>
+      console.error(
+        `unable to update last seen database for guild member ID ${guildMemberId}: ${err}`
+      )
+    );
+  return lastSeenDB;
+}
 
-  // Announce (locally) when the bot is ready.
-  client.once("ready", () => {
-    console.log("Cheep cheep! I'm ready to greet!");
-  });
+// Make a greeter to greet users in the annoucment channel when they show up in
+// the watched voice channel with their camera on, and haven't been seen yet
+// today.
+function makeGreeter(config, lastSeenDB) {
+  console.log("makegreeter")
+  console.log(config);
+  const {
+    watchChannelId,
+    announceChannelId,
+    mondayMorningAddendum,
+    botTimeZone,
+    devMode
+  } = config;
 
-  // Watch for users turning on their cameras in a voice channel.
-  client.on("voiceStateUpdate", (oldState, newState) => {
+  const greeter = (oldState, newState) => {
     const connected =
-      !oldState.selfVideo &&
       newState.selfVideo &&
-      newState.channelId === watchChannelId;
+      newState.channelId === watchChannelId &&
+      (!oldState.selfVideo || (oldState.channelId !== watchChannelId));
     if (!connected) return;
 
-    console.log(lastSeenDB);
     const memberId = newState.member.id;
     const lastSeenUTC = lastSeenDB[memberId];
     const now = new Date();
+    updateLastSeenDB(lastSeenDB, memberId, now);
 
-    // Update last seen entry for this guild member.
-    lastSeenDB[memberId] = now;
-    writeFile(lastSeenDBFileName, JSON.stringify(lastSeenDB))
-      .then(() =>
-        console.log(
-          `updated last seen database for guild member ID ${memberId}`
-        )
-      )
-      .catch((err) =>
-        console.error(
-          `unable to update last seen database for guild member ID ${memberId}: ${err}`
-        )
-      );
-
-    // Make sure we haven't already greeted this guild member today.
-    if (lastSeenUTC) {
+    // Make sure we haven't already greeted this guild member today.  Don't do
+    // this check if we're in dev mode, to make testing easier.
+    if (lastSeenUTC && !devMode) {
       const lastSeenLocal = utcToZonedTime(lastSeenUTC, botTimeZone);
       const nowLocal = utcToZonedTime(now, botTimeZone);
       if (lastSeenLocal.getDay() == nowLocal.getDay()) {
-        // Don't greet more than once a day.
         console.log(`refusing to greet ${memberId} more than once today`);
         return;
       }
@@ -118,7 +122,6 @@ function initClient(
       }
 
       const now = utcToZonedTime(new Date(), botTimeZone);
-      console.log(newState.channelId);
       const greeting = buildGreeting(
         newState.member.user,
         newState.channel,
@@ -129,31 +132,58 @@ function initClient(
       // Wait a few seconds to make the interaction feel a bit more "natural,"
       // then send the greeting.
       setTimeout(() => chan.send(greeting), 3000);
+    }).catch((err) => {
+      console.error(
+        `error fetching announcement channel ${announceChannelId}: ${err}`
+      );
     });
-    //   .catch((err) => {
-    //     console.error(
-    //       `error getting announcement channel ${announceChannelId}: ${err}`
-    //     );
-    //   });
+  }
+
+  return greeter;
+}
+
+// Initialize the client to handle the events we care about.
+// At this point, just voice state changes.
+function initClient(config) {
+  console.log(config);
+
+  // Create a new client instance.
+  const botIntents = new Intents();
+  botIntents.add(Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_VOICE_STATES);
+  const client = new Client({ intents: botIntents });
+
+  // Announce (locally) when the bot is ready.
+  client.once("ready", () => {
+    console.log("Cheep cheep! I'm ready to greet!");
   });
+
+  // Watch for users turning on their cameras in a voice channel.
+  const lastSeenDB = loadLastSeenDB();
+  const greeter = makeGreeter(config, lastSeenDB);
+  client.on("voiceStateUpdate", greeter);
+
   return client;
 }
 
+console.log("starting up!");
+
 // Read config and init client.
 dotEnvConfig();
-const token = process.env.BOT_TOKEN;
-const watchChannelId = process.env.WATCH_VOICE_CHANNEL_ID;
-const announceChannelId = process.env.ANNOUNCE_CHANNEL_ID;
-const mondayMorningAddendum = process.env.MONDAY_MORNING_ADDENDUM;
-const botTimeZone = process.env.BOT_TIME_ZONE;
+const config = {
+  watchChannelId: process.env.WATCH_VOICE_CHANNEL_ID,
+  announceChannelId: process.env.ANNOUNCE_CHANNEL_ID,
+  botTimeZone: process.env.BOT_TIME_ZONE,
+  mondayMorningAddendum: process.env.MONDAY_MORNING_ADDENDUM,
+  devMode: Boolean(process.env.DEV_MODE),
+};
+const client = initClient(config);
 
-console.log(`watch chan: ${watchChannelId} announce: ${announceChannelId}`);
-const client = initClient(
-  watchChannelId,
-  announceChannelId,
-  mondayMorningAddendum,
-  botTimeZone
-);
+// Start our ping/healthcheck endpoint.
+http.createServer((req, res) => {
+  res.write("hellobirb bot is running!");
+  res.end();
+}).listen(process.env.PORT || 8080);
 
 // Start the bot!
+const token = process.env.BOT_TOKEN;
 client.login(token);
