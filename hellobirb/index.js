@@ -47,7 +47,7 @@ function buildGreeting(member, channel, now, lastSeen, mondayMorningAddendum) {
     greeting += isEarlyEvening ? ":city_dusk:" : ":night_with_stars:";
   }
 
-  // Try to figure out how long it's been since we last saw this user.  If we
+  // Try to figure out how long it's been since we last saw this user. If we
   // have no record of last seen, just skip it.
   if (lastSeen) {
     const durationSinceLastSeen = intervalToDuration({
@@ -70,23 +70,25 @@ function buildGreeting(member, channel, now, lastSeen, mondayMorningAddendum) {
     greeting += " You're the first one here. :first_place:";
   }
 
+  // Maybe present a gift to the arriving user.
   const shouldGift = Math.floor(Math.random() * 10) - 7;
-  if (shouldGift >= 0) {
-    const gifts = [
-      "a flower! :sunflower:",
-      "a flower! :rose:",
-      "some flowers! :bouquet:",
-      "some chocolate! :chocolate_bar:",
-      "some tea! :tea:",
-      "a burrito! :burrito:",
-      "a taco! :taco:",
-      "some takeout! :takeout_box:",
-      "a dagger! :dagger:",
-    ];
-    const giftChoice = Math.floor(Math.random() * gifts.length);
-    const gift = gifts[giftChoice];
-    greeting += ` I brought you ${gifts[giftChoice]}`;
+  if (shouldGift < 0) {
+    return greeting;
   }
+  const gifts = [
+    "a flower! :sunflower:",
+    "a flower! :rose:",
+    "some flowers! :bouquet:",
+    "some chocolate! :chocolate_bar:",
+    "some tea! :tea:",
+    "a burrito! :burrito:",
+    "a taco! :taco:",
+    "some takeout! :takeout_box:",
+    "a dagger! :dagger:",
+  ];
+  const giftChoice = Math.floor(Math.random() * gifts.length);
+  const gift = gifts[giftChoice];
+  greeting += ` I brought you ${gift}`;
   return greeting;
 }
 

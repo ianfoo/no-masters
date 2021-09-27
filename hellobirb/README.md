@@ -17,6 +17,7 @@ BOT_TOKEN | Discord token from developer portal. This is required.
 WATCH_VOICE_CHANNEL_ID | The Discord ID for the voice channel to watch. This is required.
 ANNOUNCE_CHANNEL_ID | The Discord ID for the text channel to send messages on. This is required.
 BOT_TIME_ZONE | Name of the time zone (e.g., America/Los_Angeles) that the bot is running in. Defaults to UTC if not specified. Per-user time zones are not available in Discord, so allowing the bot to specify is the best that we can do.
+MONDAY_MORNING_ADDENDUM | This a string that will be included in the greeting if users show up on a Monday morning.
 PORT | Port on which to serve HTTP for the health-check page.
 DEV_MODE | Set to a non-blank value to keep the last-seen database from being updated. For testing purposes.
 
