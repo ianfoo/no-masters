@@ -80,21 +80,19 @@ function updateLastSeenDB(lastSeenDB, guildMemberId, now) {
 // the watched voice channel with their camera on, and haven't been seen yet
 // today.
 function makeGreeter(config, lastSeenDB) {
-  console.log("makegreeter")
-  console.log(config);
   const {
     watchChannelId,
     announceChannelId,
     mondayMorningAddendum,
     botTimeZone,
-    devMode
+    devMode,
   } = config;
 
   const greeter = (oldState, newState) => {
     const connected =
       newState.selfVideo &&
       newState.channelId === watchChannelId &&
-      (!oldState.selfVideo || (oldState.channelId !== watchChannelId));
+      (!oldState.selfVideo || oldState.channelId !== watchChannelId);
     if (!connected) return;
 
     const memberId = newState.member.id;
@@ -102,7 +100,7 @@ function makeGreeter(config, lastSeenDB) {
     const now = new Date();
     updateLastSeenDB(lastSeenDB, memberId, now);
 
-    // Make sure we haven't already greeted this guild member today.  Don't do
+    // Make sure we haven't already greeted this guild member today. Don't do
     // this check if we're in dev mode, to make testing easier.
     if (lastSeenUTC && !devMode) {
       const lastSeenLocal = utcToZonedTime(lastSeenUTC, botTimeZone);
@@ -113,31 +111,34 @@ function makeGreeter(config, lastSeenDB) {
       }
     }
 
-    newState.client.channels.fetch(announceChannelId).then((chan) => {
-      if (!chan.isText()) {
-        console.error(
-          `expected channel ${announceChannelId} to be a text channel`
+    newState.client.channels
+      .fetch(announceChannelId)
+      .then((chan) => {
+        if (!chan.isText()) {
+          console.error(
+            `expected channel ${announceChannelId} to be a text channel`
+          );
+          return;
+        }
+
+        const now = utcToZonedTime(new Date(), botTimeZone);
+        const greeting = buildGreeting(
+          newState.member.user,
+          newState.channel,
+          now,
+          mondayMorningAddendum
         );
-        return;
-      }
 
-      const now = utcToZonedTime(new Date(), botTimeZone);
-      const greeting = buildGreeting(
-        newState.member.user,
-        newState.channel,
-        now,
-        mondayMorningAddendum
-      );
-
-      // Wait a few seconds to make the interaction feel a bit more "natural,"
-      // then send the greeting.
-      setTimeout(() => chan.send(greeting), 3000);
-    }).catch((err) => {
-      console.error(
-        `error fetching announcement channel ${announceChannelId}: ${err}`
-      );
-    });
-  }
+        // Wait a few seconds to make the interaction feel a bit more "natural,"
+        // then send the greeting.
+        setTimeout(() => chan.send(greeting), 3000);
+      })
+      .catch((err) => {
+        console.error(
+          `error fetching announcement channel ${announceChannelId}: ${err}`
+        );
+      });
+  };
 
   return greeter;
 }
@@ -179,10 +180,12 @@ const config = {
 const client = initClient(config);
 
 // Start our ping/healthcheck endpoint.
-http.createServer((req, res) => {
-  res.write("hellobirb bot is running!");
-  res.end();
-}).listen(process.env.PORT || 8080);
+http
+  .createServer((req, res) => {
+    res.write("hellobirb bot is running!");
+    res.end();
+  })
+  .listen(process.env.PORT || 8080);
 
 // Start the bot!
 const token = process.env.BOT_TOKEN;
