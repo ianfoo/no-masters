@@ -1,4 +1,5 @@
 node_modules
+last-seen.json
 .env
 .env.*
 *.bak
