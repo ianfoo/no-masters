@@ -1,4 +1,5 @@
 {
+  "sourceType": "module",
   "type": "module",
   "dependencies": {
     "date-fns": "^2.24.0",
