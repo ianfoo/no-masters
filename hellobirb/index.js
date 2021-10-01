@@ -1,6 +1,6 @@
 import { Client, Intents } from 'discord.js';
 import { config as dotEnvConfig } from 'dotenv';
-import { readFileSync } from 'fs';
+import { readFileSync, renameSync, existsSync, mkdirSync } from 'fs';
 import { writeFile } from 'fs/promises';
 import { intervalToDuration } from 'date-fns';
 import tzPkg from 'date-fns-tz';
@@ -14,23 +14,36 @@ const lastSeenDBFileName = 'last-seen.json';
 // * Make this a bit more sane, code-wise. Split into a couple files.
 // * SQLite last-seen database?
 // * Handle multiple servers.
-// * Reply/react to mentions.
+// * Reply/react to mentions and reactions on sent messages.
 // * Validation of configuration (e.g., non-empty channel IDs).
 // * Custom greetings/greeting fragments for specially-configured users.
-// * Determine whether member ID is different from user ID. I think it
-//       might not be, which means the "database" will need a guild ID too.
+// * Add Guild IDs since member IDs are the same as user IDs.
+// * Read/write from files not located in run directory (e.g., XDG_CONFIG_HOME).
 
 // Build a time-aware greeting for the user who has just joined.
 // Does not take into account the user's local time, but there
 // doesn't appear to be any timezone data available for Discord
 // users.
-function buildGreeting(member, channel, now, lastSeen, mondayMorningAddendum) {
+function buildGreeting(
+	member,
+	channel,
+	now,
+	lastSeen,
+	{
+		mondayMorningAddendum,
+		giftProbability,
+		extraGiftProbability,
+		goodToSeeYouDays,
+		alwaysGreet,
+	},
+) {
 	const hour = now.getHours();
 	const isLateNight = hour < 5;
 	const isMorning = hour >= 5 && hour < 12;
 	const isEarlyMorning = hour >= 5 && hour < 8;
 	const isAfternoon = hour >= 12 && hour < 17;
 	const isEarlyEvening = hour >= 17 && hour < 20;
+	const isLateEvening = hour >= 20;
 
 	let greeting = ':bird: ';
 	if (isLateNight) {
@@ -50,6 +63,11 @@ function buildGreeting(member, channel, now, lastSeen, mondayMorningAddendum) {
 		greeting += isEarlyEvening ? ':city_dusk:' : ':night_with_stars:';
 	}
 
+	// Is it Friday yet?!
+	if (now.getDay() === 5 || !isLateEvening) {
+		greeting += ' Happy Friday! :partying_face:';
+	}
+
 	// Try to figure out how long it's been since we last saw this user. If we
 	// have no record of last seen, just skip it.
 	if (lastSeen) {
@@ -57,41 +75,152 @@ function buildGreeting(member, channel, now, lastSeen, mondayMorningAddendum) {
 			start: lastSeen,
 			end: now,
 		});
-		const beenAMinute = durationSinceLastSeen.days >= 7;
+		const beenAMinute = durationSinceLastSeen.days >= goodToSeeYouDays;
 		if (beenAMinute) {
 			console.log(
 				`${member.id} has popped in for the first time in ${durationSinceLastSeen.days} days`,
 			);
-			greeting += ' It\'s good to see you again! :relaxed:';
+			greeting += ' It\'s good to see you again!';
+
+			const beenALongTime = durationSinceLastSeen.day >= 2 * goodToSeeYouDays;
+			if (beenALongTime) {
+				greeting += ' I\'ve missed you!';
+			}
+			greeting += ' :relaxed:';
 		}
 	}
 
 	if (now.getDay() === 1 && isMorning && mondayMorningAddendum) {
 		greeting += ' ' + mondayMorningAddendum;
 	}
+
+	const weather = '';
+	let motd = '';
+	let onThisDay = '';
+
+	// TODO Update to check if size == 1 AND most recent greet was not today.
+	// We're not currently recording the most recent greet time, but this could
+	// just be kept in memory for now.
 	if (channel.members.size === 1) {
-		greeting += ' You\'re the first one here. :first_place:';
+		greeting += ' You\'re the first one here. ';
+		const awardPool = [':first_place:', ':trophy:'];
+		const n = Math.floor(Math.random() * awardPool.length);
+		const award = awardPool[n];
+		greeting += award;
+
+		// Add message of the day, if it exists.
+		//
+		// TODO Make these scheduled and stored in a database or something better
+		// than a text file.
+		try {
+			const motdFile = 'motd.txt';
+			if (existsSync(motdFile)) {
+				motd = readFileSync(motdFile).toString();
+
+				// Archive previous MOTD.
+				if (!alwaysGreet) {
+					mkdirSync('.motd', { recursive: true });
+					renameSync(motdFile, `.motd/motd.${now.toISOString()}.txt`);
+				}
+			}
+		}
+		catch (err) {
+			console.error(`error adding motd: ${err}`);
+		}
+
+		// Look for content relating to this date. First, including the year, then
+		// falling back to just the month and day.
+		try {
+			const onThisDayDir = 'on-this-day';
+			const monthAndDay = `${String(now.getMonth() + 1).padStart(
+				2,
+				'0',
+			)}-${String(now.getDate()).padStart(2, '0')}`;
+			const yearMonthDay = `${now.getFullYear()}-${monthAndDay}`;
+			const onThisDayWithYearFile = `${onThisDayDir}/${yearMonthDay}.txt`;
+			const onThisDayWithoutYearFile = `${onThisDayDir}/${monthAndDay}.txt`;
+
+			if (existsSync(onThisDayWithYearFile)) {
+				onThisDay = readFileSync(onThisDayWithYearFile).toString();
+			}
+			else if (existsSync(onThisDayWithoutYearFile)) {
+				onThisDay = readFileSync(onThisDayWithoutYearFile).toString();
+			}
+		}
+		catch (err) {
+			console.error(`error adding "on this day" content: ${err}`);
+		}
+
+		// TODO Get weather data from weather API.
 	}
 
 	// Maybe present a gift to the arriving user.
-	const shouldGift = Math.floor(Math.random() * 10) - 7;
-	if (shouldGift < 0) {
-		return greeting;
+	// TODO Make this bonus adjustable per user.
+	const userBonus = 0;
+	const shouldGift =
+		Math.floor(Math.random() * 100) >= 100 - (giftProbability + userBonus);
+	if (shouldGift) {
+		// Maybe give multiple gifts.
+		let giftCount = 1;
+		let joiningText = ' I brought you';
+		const extraGift = Math.floor(Math.random() * 100);
+		if (extraGift >= 100 - extraGiftProbability) {
+			giftCount++;
+		}
+		const gifts = [
+			'a flower! :sunflower:',
+			'a flower! :rose:',
+			'some flowers! :bouquet:',
+			'a book I really like! :closed_book:',
+			'a poem I wrote! :scroll:',
+			'some chocolate! :chocolate_bar:',
+			'a cookie! :cookie:',
+			'some tea! :tea:',
+			'a nice cup of coffee :coffee:',
+			'a burrito! :burrito:',
+			'a taco! :taco:',
+			'some sushi! :sushi:',
+			'some takeout! :takeout_box:',
+			'a bed! :bed:',
+			'a dagger! :dagger:',
+			'a potion I stole from a laboratory! :test_tube:',
+			'the skull of your enemy! :skull:',
+		];
+		// TODO Handle awkward "I brought you a flower, and a flower" and related
+		// cases. It's handled here with string comparison, but probably build up
+		// a set of gifts and make sure the latest selection is not already present.
+		for (let i = 0; i < giftCount; i++) {
+			const giftChoice = Math.floor(Math.random() * gifts.length);
+			const gift = gifts[giftChoice];
+
+			// Make sure we didn't already give this or a similar gift.
+			// This is not a great way to do it, but it will handle the gross
+			// cases that we have here for now.
+			if (greeting.includes(gift)) {
+				// Go again.
+				i--;
+				continue;
+			}
+
+			greeting += `${joiningText} ${gift}`;
+			joiningText = ' And also';
+		}
+		if (giftCount > 1) {
+			greeting += ' Because I really like you. :pleading_face:';
+		}
 	}
-	const gifts = [
-		'a flower! :sunflower:',
-		'a flower! :rose:',
-		'some flowers! :bouquet:',
-		'some chocolate! :chocolate_bar:',
-		'some tea! :tea:',
-		'a burrito! :burrito:',
-		'a taco! :taco:',
-		'some takeout! :takeout_box:',
-		'a dagger! :dagger:',
-	];
-	const giftChoice = Math.floor(Math.random() * gifts.length);
-	const gift = gifts[giftChoice];
-	greeting += ` I brought you ${gift}`;
+
+	// Add the first-greeting-only bits, if they apply.
+	if (weather) {
+		greeting += '\n\n' + weather.trim();
+	}
+	if (motd) {
+		greeting += '\n\n' + motd.trim();
+	}
+	if (onThisDay) {
+		greeting += '\n\n' + onThisDay.trim();
+	}
+
 	return greeting;
 }
 
@@ -150,7 +279,7 @@ function makeGreeter(config, lastSeenDB) {
 		if (lastSeenUTC) {
 			const lastSeen = utcToZonedTime(lastSeenUTC, botTimeZone);
 			const now = utcToZonedTime(nowUTC, botTimeZone);
-			if (!devMode && lastSeen.getDay() == now.getDay()) {
+			if (!devMode.alwaysGreet && lastSeen.getDay() == now.getDay()) {
 				console.log(`refusing to greet ${memberId} more than once today`);
 				return;
 			}
@@ -170,12 +299,26 @@ function makeGreeter(config, lastSeenDB) {
 				const lastSeen = lastSeenUTC
 					? utcToZonedTime(lastSeenUTC, botTimeZone)
 					: null;
+
+				const greetOpts = {
+					mondayMorningAddendum,
+					giftProbability: devMode.alwaysGift ? 100 : 60,
+					extraGiftProbability: devMode.alwaysExtraGift ? 100 : 18,
+					goodToSeeYouDays: devMode.alwaysGoodToSeeYou ? 0 : 7,
+					alwaysGreet: devMode.alwaysGreet,
+				};
+
+				console.log(greetOpts);
+
+				// TODO random values should be parameterized, for testing.
+				//      (i.e., move the random calls out of buildGreeting)
+				// TODO gifts should be passed in as a parameter.
 				const greeting = buildGreeting(
 					newState.member,
 					newState.channel,
 					now,
 					lastSeen,
-					mondayMorningAddendum,
+					greetOpts,
 				);
 
 				console.log(`saying hello to ${newState.member}!`);
@@ -183,7 +326,10 @@ function makeGreeter(config, lastSeenDB) {
 
 				// Wait a few seconds to make the interaction feel a bit more "natural,"
 				// then send the greeting.
-				setTimeout(() => chan.send(greeting), greetingDelayMs);
+				setTimeout(
+					() => chan.send(greeting),
+					devMode.alwaysGreet ? 0 : greetingDelayMs,
+				);
 			})
 			.catch((err) => {
 				console.error(
@@ -209,6 +355,30 @@ function initClient(config) {
 	client.once('ready', () => {
 		console.log('Cheep cheep! I\'m ready to greet!');
 		client.user.setActivity('for friends', { type: 'WATCHING' });
+
+		// Occasionally update activity status.
+		const tenMinutes = 10 * 60 * 1000;
+		setInterval(() => {
+			const now = new Date();
+			const hour = now.getHours();
+
+			// TODO Get actual sunrise and sunset times.
+			if (hour >= 6 && hour <= 8) {
+				client.user.setActivity('the sunrise', { type: 'WATCHING' });
+			}
+			else {
+				const n = Math.floor(Math.random() * 100);
+				if (n < 25) {
+					client.user.setActivity('outside', { type: 'PLAYING' });
+				}
+				else if (n < 45) {
+					client.user.setActivity('30 Rock', { type: 'WATCHING' });
+				}
+				else {
+					client.user.setActivity('for friends', { type: 'WATCHING' });
+				}
+			}
+		}, tenMinutes);
 	});
 
 	// Watch for users turning on their cameras in a voice channel.
@@ -228,15 +398,26 @@ const config = {
 	announceChannelId: process.env.ANNOUNCE_CHANNEL_ID,
 	botTimeZone: process.env.BOT_TIME_ZONE || 'UTC',
 	mondayMorningAddendum: process.env.MONDAY_MORNING_ADDENDUM,
-	devMode: Boolean(process.env.DEV_MODE),
+
+	// Dev Mode Options:
+	// alwaysGreet
+	// alwaysGift
+	// alwaysExtraGift
+	// alwaysGoodToSeeYou
+	devMode: (process.env.DEV_MODE || '')
+		.split(',')
+		.filter((s) => s.length > 0)
+		.reduce((o, key) => ({ ...o, [key.trim()]: true }), {}),
 };
 const client = initClient(config);
 
 // Start our ping/healthcheck endpoint.
-http.createServer((req, res) => {
-	res.write('hellobirb bot is running!');
-	res.end();
-}).listen(process.env.PORT || 8080);
+http
+	.createServer((req, res) => {
+		res.write('hellobirb bot is running!');
+		res.end();
+	})
+	.listen(process.env.PORT || 8080);
 
 // Start the bot!
 const token = process.env.BOT_TOKEN;

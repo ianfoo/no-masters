@@ -3,3 +3,6 @@ last-seen.json
 .env
 .env.*
 *.bak
+
+.motd
+motd*.txt
