@@ -20,6 +20,35 @@ const lastSeenDBFileName = 'last-seen.json';
 // * Add Guild IDs since member IDs are the same as user IDs.
 // * Read/write from files not located in run directory (e.g., XDG_CONFIG_HOME).
 
+// TODO Incorporate Monday Morning Addendum into the date-based greeting.
+function buildDateGreeting(now) {
+	// Is it Friday yet?!
+	const isFriday = now.getDay() === 5;
+	const isLateEvening = now.getHours() >= 20;
+
+	// Is it a new month?
+	const isNewMonth = now.getDate() === 1;
+
+	if (isFriday || isNewMonth) {
+		let dateGreeting = '';
+		if (isFriday && !isLateEvening) {
+			dateGreeting += 'Happy Friday';
+		}
+		if (isNewMonth) {
+			if (dateGreeting.length > 0) {
+				dateGreeting += ', and happy ';
+			}
+			else {
+				dateGreeting += 'Happy ';
+			}
+			const month = now.toLocaleString('en-US', { month: 'long' });
+			dateGreeting += month;
+		}
+		dateGreeting += '! :partying_face:';
+		return dateGreeting;
+	}
+}
+
 // Build a time-aware greeting for the user who has just joined.
 // Does not take into account the user's local time, but there
 // doesn't appear to be any timezone data available for Discord
@@ -43,7 +72,6 @@ function buildGreeting(
 	const isEarlyMorning = hour >= 5 && hour < 8;
 	const isAfternoon = hour >= 12 && hour < 17;
 	const isEarlyEvening = hour >= 17 && hour < 20;
-	const isLateEvening = hour >= 20;
 
 	let greeting = ':bird: ';
 	if (isLateNight) {
@@ -63,10 +91,7 @@ function buildGreeting(
 		greeting += isEarlyEvening ? ':city_dusk:' : ':night_with_stars:';
 	}
 
-	// Is it Friday yet?!
-	if (now.getDay() === 5 || !isLateEvening) {
-		greeting += ' Happy Friday! :partying_face:';
-	}
+	greeting += ` ${buildDateGreeting(now)}`;
 
 	// Try to figure out how long it's been since we last saw this user. If we
 	// have no record of last seen, just skip it.
