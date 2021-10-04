@@ -180,11 +180,24 @@ async function buildGreeting(
     greeting += ' I sure am glad to have someone to talk to again!';
   }
 
+  const numOnline = channel.members.size;
+  const hollywoodSquaresThreshold = 9;
+  if (numOnline <= hollywoodSquaresThreshold) {
+    if (numOnline === hollywoodSquaresThreshold) {
+      greeting += ` Woo! We have enough for Hollywood Squares! :raised_hands:`;
+    } else if (numOnline >= hollywoodSquaresThreshold - 2) {
+      const numNeeded = hollywoodSquaresThreshold - numOnline;
+      greeting += ` We're so close to Hollywood Squares! Only ${numNeeded} more! :raised_hands:`;
+    } else if (numOnline >= hollywoodSquaresThreshold / 2) {
+      greeting += ` We've got ${numOnline} here and are over halfway to Hollywood Squares!`;
+    }
+  }
+
   let motd = '';
   let onThisDay = '';
 
   if (!isToday(latestGreetingTime) || alwaysFirst) {
-    if (channel.members.size === 1 || alwaysFirst) {
+    if (numOnline === 1 || alwaysFirst) {
       greeting += " You're the first one here. ";
       const awardPool = [':first_place:', ':trophy:'];
       const n = Math.floor(Math.random() * awardPool.length);
@@ -368,7 +381,7 @@ function loadLastSeenDB() {
 // Make a greeter to greet users in the announcement channel when they show up
 // in the watched voice channel with their camera on, and haven't been seen yet
 // today.
-function makeGreeter(config, lastSeenDB) {
+function makeGreeter(config, initialLastSeenDB) {
   const {
     watchChannelId,
     announceChannelId,
@@ -378,6 +391,7 @@ function makeGreeter(config, lastSeenDB) {
     weatherLocation,
   } = config;
 
+  let lastSeenDB = initialLastSeenDB;
   const greeter = (oldState, newState) => {
     const connected =
       newState.selfVideo &&
