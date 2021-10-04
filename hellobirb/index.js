@@ -2,12 +2,20 @@ import { Client, Intents } from 'discord.js';
 import { config as dotEnvConfig } from 'dotenv';
 import { readFileSync, renameSync, existsSync, mkdirSync } from 'fs';
 import { writeFile } from 'fs/promises';
-import { intervalToDuration, isToday } from 'date-fns';
+import {
+  differenceInDays,
+  differenceInHours,
+  isMonday,
+  isFirstDayOfMonth,
+  isFriday,
+  isSameDay,
+  isToday,
+} from 'date-fns';
 import tzPkg from 'date-fns-tz';
 import * as http from 'http';
 import getWeatherForecast from './lib/weather.js';
 
-const { utcToZonedTime, zonedTimeToUtc } = tzPkg;
+const { utcToZonedTime } = tzPkg;
 
 const greetingDelayMs = 3000;
 const lastSeenDBFileName = 'last-seen.json';
@@ -15,31 +23,33 @@ const lastSeenDBFileName = 'last-seen.json';
 // TODO
 // * Make this a bit more sane, code-wise. Split into a couple files.
 // * SQLite last-seen database?
+//   * It's not just for last-seen data, or won't be for long, so, rename.
 // * Handle multiple servers.
 // * Reply/react to mentions and reactions on sent messages.
 // * Validation of configuration (e.g., non-empty channel IDs).
 // * Custom greetings/greeting fragments for specially-configured users.
 // * Add Guild IDs since member IDs are the same as user IDs.
-// * Read/write from files not located in run directory (e.g., XDG_CONFIG_HOME).
+// * Read/write from files not located in run directory (e.g., XDG_DATA_HOME).
+// * Watch for "Hollywood Squares" 9-participant count and react.
 
 // TODO Incorporate Monday Morning Addendum into the date-based greeting.
 function buildDateGreeting(now) {
   // Is it Friday yet?!
-  const isFriday = now.getDay() === 5;
+  const todayIsFriday = isFriday(now);
   const isLateEvening = now.getHours() >= 20;
 
   // Is it a new month?
-  const isNewMonth = now.getDate() === 1;
+  const todayIsTheFirst = isFirstDayOfMonth(now);
 
-  if (!isFriday && !isNewMonth) {
+  if (!todayIsFriday && !todayIsTheFirst) {
     return '';
   }
 
   let dateGreeting = '';
-  if (isFriday && !isLateEvening) {
+  if (todayIsFriday && !isLateEvening) {
     dateGreeting += 'Happy Friday';
   }
-  if (isNewMonth) {
+  if (todayIsTheFirst) {
     if (dateGreeting.length > 0) {
       dateGreeting += ', and happy ';
     } else {
@@ -63,14 +73,21 @@ async function buildWeatherMessage(location) {
     console.error(`weather: ${ex}`);
     return '';
   }
+  const forecast = `${weather.forecast[0].toLowerCase()}${weather.forecast.substring(
+    1,
+  )}`;
   return weather
-    ? `The forecast for ${weather.for} is: ${weather.forecast}`
+    ? `The forecast for ${weather.for} is ${forecast}`
     : '';
 }
 
-function getWeekendPromptIfMonday(now) {
-  if (now.getDay() !== 1) {
+function getWeekendPromptIfMonday(now, mondayMorningAddendum) {
+  if (!isMonday(now)) {
     return '';
+  }
+  let greeting = '';
+  if (mondayMorningAddendum) {
+    greeting = `${mondayMorningAddendum} `;
   }
   const prompts = [
     'How was your weekend?',
@@ -83,7 +100,8 @@ function getWeekendPromptIfMonday(now) {
     'Did you do anything cool this weekend?',
   ];
   const n = Math.floor(Math.random() * prompts.length);
-  return prompts[n];
+  greeting += prompts[n];
+  return greeting;
 }
 
 // Build a time-aware greeting for the user who has just joined.
@@ -131,62 +149,46 @@ async function buildGreeting(
   greeting += ` ${buildDateGreeting(now)}`;
 
   // Try to figure out how long it's been since we last saw this user. If we
-  // have no record of last seen, just skip it.
+  // have no record of last seen, introduce ourselves.
   if (lastSeen) {
-    const durationSinceLastSeen = intervalToDuration({
-      start: lastSeen,
-      end: now,
-    });
-    const beenAMinute =
-      durationSinceLastSeen.days >= goodToSeeYouDays;
+    const daysSinceLastSeen = differenceInDays(now, lastSeen);
+    const beenAMinute = daysSinceLastSeen >= goodToSeeYouDays;
     if (beenAMinute) {
       console.log(
-        `${member.id} has popped in for the first time in ${durationSinceLastSeen.days} days`,
+        `${member.id} has popped in for the first time in ${daysSinceLastSeen} days`,
       );
       greeting += " It's good to see you again!";
 
-      const beenALongTime =
-        durationSinceLastSeen.day >= 2 * goodToSeeYouDays;
+      const beenALongTime = daysSinceLastSeen >= 2 * goodToSeeYouDays;
       if (beenALongTime) {
         greeting += " I've missed you!";
       }
       greeting += ' :relaxed:';
     }
+  } else {
+    greeting +=
+      "I think I'm new since you were last here. It's so nice to meet you! :hugging:";
   }
 
-  if (now.getDay() === 1 && isMorning && mondayMorningAddendum) {
-    greeting += ` ${mondayMorningAddendum}`;
-  }
-  if (latestGreetingTime) {
-    const timeSinceLastGreeting = intervalToDuration({
-      start: latestGreetingTime,
-      end: now,
-    });
-    if (timeSinceLastGreeting.days >= 2) {
-      greeting += ' I sure am glad to have someone to talk to again!';
-    }
+  if (differenceInDays(now, latestGreetingTime) >= 2) {
+    greeting += ' I sure am glad to have someone to talk to again!';
   }
 
   let motd = '';
   let onThisDay = '';
 
-  // TODO Update to check if size == 1 AND most recent greet was not today.
-  // We're not currently recording the most recent greet time, but this could
-  // just be kept in memory for now.
-  if (
-    (channel.members.size === 1 && !isToday(latestGreetingTime)) ||
-    alwaysFirst
-  ) {
-    greeting += " You're the first one here. ";
-    const awardPool = [':first_place:', ':trophy:'];
-    const n = Math.floor(Math.random() * awardPool.length);
-    const award = awardPool[n];
-    greeting += award;
+  if (!isToday(latestGreetingTime) || alwaysFirst) {
+    if (channel.members.size === 1 || alwaysFirst) {
+      greeting += " You're the first one here. ";
+      const awardPool = [':first_place:', ':trophy:'];
+      const n = Math.floor(Math.random() * awardPool.length);
+      const award = awardPool[n];
+      greeting += award;
+    }
 
     // Add message of the day, if it exists.
     //
-    // TODO Make these scheduled and stored in a database or something better
-    // than a text file.
+    // TODO Store in a database or something better than a text file.
     try {
       const motdFile = 'motd.txt';
       if (existsSync(motdFile)) {
@@ -280,9 +282,12 @@ async function buildGreeting(
     }
   }
 
-  const weather = await buildWeatherMessage(weatherLocation);
-  if (weather) {
-    greeting += `\n\n${weather.trim()}`;
+  // Add the weather if it's been a couple hours since we last mentioned it.
+  if (differenceInHours(now, latestGreetingTime) >= 2) {
+    const weather = await buildWeatherMessage(weatherLocation);
+    if (weather) {
+      greeting += `\n\n${weather.trim()}`;
+    }
   }
 
   // Add the first-greeting-only bits, if they apply.
@@ -298,7 +303,10 @@ async function buildGreeting(
     : '';
   greeting += waterPrompt;
 
-  const weekend = getWeekendPromptIfMonday(now);
+  const weekend = getWeekendPromptIfMonday(
+    now,
+    mondayMorningAddendum,
+  );
   if (weekend) {
     greeting += `\n\n${weekend.trim()}`;
   }
@@ -320,6 +328,10 @@ function updateLastSeenDB(lastSeenDB, guildMemberId, now) {
       if (guildMemberId) {
         msg += ` for guild member ID ${guildMemberId}`;
       }
+
+      // TODO This is a problem because we'll greet a user every time if we
+      // can't save, and their last-seen time will stay fixed, and birb will
+      // think they haven't been seen in longer and longer.
       console.error(`${msg}: ${err}`);
     },
   );
@@ -336,26 +348,13 @@ function loadLastSeenDB() {
   } catch (ex) {
     console.error(`unable to read file of last-seen records: ${ex}`);
   }
-  if (lastSeenDB.members) {
-    return lastSeenDB;
-  }
-  // Perform in-place migration of DB.
-  // TODO Remove this after migration has occurred.
-  const migrated = {
-    members: lastSeenDB,
-  };
-  lastSeenDB = updateLastSeenDB(
-    migrated,
-    null,
-    zonedTimeToUtc(new Date()),
-  );
   return lastSeenDB;
 }
 
 // Make a greeter to greet users in the announcement channel when they show up
 // in the watched voice channel with their camera on, and haven't been seen yet
 // today.
-function makeGreeter(config, initialLastSeenDB) {
+function makeGreeter(config, lastSeenDB) {
   const {
     watchChannelId,
     announceChannelId,
@@ -365,7 +364,6 @@ function makeGreeter(config, initialLastSeenDB) {
     weatherLocation,
   } = config;
 
-  let lastSeenDB = initialLastSeenDB;
   const greeter = (oldState, newState) => {
     const connected =
       newState.selfVideo &&
@@ -375,7 +373,9 @@ function makeGreeter(config, initialLastSeenDB) {
 
     const memberId = newState.member.id;
     const lastSeenUTC = lastSeenDB.members[memberId];
+    const latestGreetingTimeUTC = lastSeenDB.lastGreeting;
     const nowUTC = new Date();
+
     lastSeenDB = updateLastSeenDB(lastSeenDB, memberId, nowUTC);
 
     // Make sure we haven't already greeted this guild member today. Don't do
@@ -383,10 +383,7 @@ function makeGreeter(config, initialLastSeenDB) {
     if (lastSeenUTC) {
       const lastSeen = utcToZonedTime(lastSeenUTC, botTimeZone);
       const now = utcToZonedTime(nowUTC, botTimeZone);
-      if (
-        !devMode.alwaysGreet &&
-        lastSeen.getDay() === now.getDay() // TODO Make this more robust with date-fns.
-      ) {
+      if (!devMode.alwaysGreet && isSameDay(lastSeen, now)) {
         console.log(
           `refusing to greet ${memberId} more than once today`,
         );
@@ -408,6 +405,9 @@ function makeGreeter(config, initialLastSeenDB) {
         const lastSeen = lastSeenUTC
           ? utcToZonedTime(lastSeenUTC, botTimeZone)
           : null;
+        const latestGreetingTime = latestGreetingTimeUTC
+          ? utcToZonedTime(latestGreetingTimeUTC, botTimeZone)
+          : null;
 
         const greetOpts = {
           mondayMorningAddendum,
@@ -427,12 +427,16 @@ function makeGreeter(config, initialLastSeenDB) {
           newState.channel,
           now,
           lastSeen,
-          lastSeenDB.lastGreeting,
+          latestGreetingTime,
           greetOpts,
         );
 
         console.log(`saying hello to ${newState.member}!`);
-        chan.sendTyping();
+
+        // TODO Why is this causing a 403 now?
+        chan.sendTyping().catch((err) => {
+          console.error(`failed to send typing event: ${err}`);
+        });
 
         // Wait a few seconds to make the interaction feel a bit more "natural,"
         // then send the greeting.
@@ -443,7 +447,7 @@ function makeGreeter(config, initialLastSeenDB) {
       })
       .catch((err) => {
         console.error(
-          `error fetching announcement channel ${announceChannelId}: ${err}`,
+          `error greeting user in ${announceChannelId}: ${err}`,
         );
       });
   };
@@ -485,8 +489,21 @@ function initClient(config) {
         const n = Math.floor(Math.random() * 100);
         if (n < 25) {
           client.user.setActivity('outside', { type: 'PLAYING' });
-        } else if (n < 45) {
-          client.user.setActivity('30 Rock', { type: 'WATCHING' });
+        } else if (n < 50) {
+          const shows = [
+            '30 Rock',
+            'Parks and Rec',
+            'Brooklyn 99',
+            'Planet Earth',
+            'The Punisher',
+            "Bob's Burgers",
+            'Rick and Morty',
+            'bird documentaries',
+          ];
+          const showIdx = Math.floor(Math.random() * shows.length);
+          client.user.setActivity(shows[showIdx], {
+            type: 'WATCHING',
+          });
         } else {
           client.user.setActivity('for friends', {
             type: 'WATCHING',
@@ -531,7 +548,7 @@ const client = initClient(config);
 // Start our ping/healthcheck endpoint.
 http
   .createServer((req, res) => {
-    res.write('hellobirb bot is running!');
+    res.write('hellobirb bot is running! chirp! chirp!');
     res.end();
   })
   .listen(process.env.PORT || 8080);
