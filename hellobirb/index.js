@@ -45,7 +45,7 @@ function buildDateGreeting(now) {
     return '';
   }
 
-  let dateGreeting = '';
+  let dateGreeting = ' ';
   if (todayIsFriday && !isLateEvening) {
     dateGreeting += 'Happy Friday';
   }
@@ -64,10 +64,12 @@ function buildDateGreeting(now) {
 
 async function buildWeatherMessage(location) {
   if (!location) {
+    console.log('No location specified for weather: skipping');
     return '';
   }
   let weather;
   try {
+    console.log(`Getting weather for ${location}`);
     weather = await getWeatherForecast(location);
   } catch (ex) {
     console.error(`weather: ${ex}`);
@@ -81,12 +83,16 @@ async function buildWeatherMessage(location) {
     : '';
 }
 
-function getWeekendPromptIfMonday(now, mondayMorningAddendum) {
+function getWeekendPromptIfMonday(
+  now,
+  mondayMorningAddendum,
+  isMorning,
+) {
   if (!isMonday(now)) {
     return '';
   }
   let greeting = '';
-  if (mondayMorningAddendum) {
+  if (isMorning && mondayMorningAddendum) {
     greeting = `${mondayMorningAddendum} `;
   }
   const prompts = [
@@ -146,7 +152,7 @@ async function buildGreeting(
     greeting += isEarlyEvening ? ':city_dusk:' : ':night_with_stars:';
   }
 
-  greeting += ` ${buildDateGreeting(now)}`;
+  greeting += buildDateGreeting(now);
 
   // Try to figure out how long it's been since we last saw this user. If we
   // have no record of last seen, introduce ourselves.
@@ -283,11 +289,18 @@ async function buildGreeting(
   }
 
   // Add the weather if it's been a couple hours since we last mentioned it.
-  if (differenceInHours(now, latestGreetingTime) >= 2) {
+  if (
+    differenceInHours(now, latestGreetingTime) >= 2 ||
+    !latestGreetingTime
+  ) {
     const weather = await buildWeatherMessage(weatherLocation);
     if (weather) {
       greeting += `\n\n${weather.trim()}`;
     }
+  } else {
+    console.log(
+      `skipping weather since it was last shared at ${latestGreetingTime}`,
+    );
   }
 
   // Add the first-greeting-only bits, if they apply.
@@ -306,6 +319,7 @@ async function buildGreeting(
   const weekend = getWeekendPromptIfMonday(
     now,
     mondayMorningAddendum,
+    isMorning,
   );
   if (weekend) {
     greeting += `\n\n${weekend.trim()}`;
@@ -342,7 +356,7 @@ function updateLastSeenDB(lastSeenDB, guildMemberId, now) {
 // file. This is fine for low volume usage, though, and simpler
 // than trying to connect with an actual database.
 function loadLastSeenDB() {
-  let lastSeenDB = {};
+  let lastSeenDB = { members: {} };
   try {
     lastSeenDB = JSON.parse(readFileSync(lastSeenDBFileName));
   } catch (ex) {
@@ -372,7 +386,9 @@ function makeGreeter(config, lastSeenDB) {
     if (!connected) return;
 
     const memberId = newState.member.id;
-    const lastSeenUTC = lastSeenDB.members[memberId];
+    const lastSeenUTC = lastSeenDB.members
+      ? lastSeenDB.members[memberId]
+      : null;
     const latestGreetingTimeUTC = lastSeenDB.lastGreeting;
     const nowUTC = new Date();
 
@@ -400,6 +416,11 @@ function makeGreeter(config, lastSeenDB) {
           );
           return;
         }
+
+        // TODO Why is this causing a 403 now when run on my laptop?
+        chan.sendTyping().catch((err) => {
+          console.error(`failed to send typing event: ${err}`);
+        });
 
         const now = utcToZonedTime(nowUTC, botTimeZone);
         const lastSeen = lastSeenUTC
@@ -432,11 +453,6 @@ function makeGreeter(config, lastSeenDB) {
         );
 
         console.log(`saying hello to ${newState.member}!`);
-
-        // TODO Why is this causing a 403 now?
-        chan.sendTyping().catch((err) => {
-          console.error(`failed to send typing event: ${err}`);
-        });
 
         // Wait a few seconds to make the interaction feel a bit more "natural,"
         // then send the greeting.
