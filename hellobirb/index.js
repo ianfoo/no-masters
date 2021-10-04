@@ -180,6 +180,7 @@ async function buildGreeting(
     greeting += ' I sure am glad to have someone to talk to again!';
   }
 
+  // TODO Only do this Hollywood Squares stuff when the number of users is going up.
   const numOnline = channel.members.size;
   const hollywoodSquaresThreshold = 9;
   if (numOnline <= hollywoodSquaresThreshold) {
@@ -196,6 +197,7 @@ async function buildGreeting(
   let motd = '';
   let onThisDay = '';
 
+  // TODO Only show first one here message if there were previously zero people here.
   if (!isToday(latestGreetingTime) || alwaysFirst) {
     if (numOnline === 1 || alwaysFirst) {
       greeting += " You're the first one here. ";
@@ -507,7 +509,7 @@ function initClient(config) {
     client.user.setActivity('for friends', { type: 'WATCHING' });
 
     // Occasionally update activity status.
-    const tenMinutes = 10 * 60 * 1000;
+    const thirtyMinutes = 30 * 60 * 1000;
     setInterval(() => {
       const now = utcToZonedTime(new Date(), config.botTimeZone);
       const hour = now.getHours();
@@ -534,13 +536,17 @@ function initClient(config) {
           client.user.setActivity(shows[showIdx], {
             type: 'WATCHING',
           });
+        } else if (n < 60) {
+          client.user.setActivity('"Surfin\' Bird" by The Trashmen', {
+            type: 'LISTENING',
+          });
         } else {
           client.user.setActivity('for friends', {
             type: 'WATCHING',
           });
         }
       }
-    }, tenMinutes);
+    }, thirtyMinutes);
   });
 
   // Watch for users turning on their cameras in a voice channel.
