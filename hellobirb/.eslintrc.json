@@ -4,5 +4,8 @@
   "rules": {
     "prettier/prettier": ["error"],
     "no-console": "off"
+  },
+  "parserOptions": {
+    "ecmaVersion": 2020
   }
 }

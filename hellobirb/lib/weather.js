@@ -18,18 +18,32 @@ function decorateForecast(forecast) {
   // for iteration, going from more specific phrases to more general ones.
   const conditions = [
     {
-      phrase: 'part(ly|ially) sunny',
+      phrase: 'part(?:ly|ially) sunny',
+      emoji: ':white_sun_cloud:',
+    },
+    {
+      phrase: 'part(?:ly|ially) cloudy',
       emoji: ':white_sun_small_cloud:',
     },
-    { phrase: 'part(ly|ially) cloudy', emoji: ':white_sun_cloud:' },
     { phrase: 'cloud[sy]', emoji: ':cloud:' },
-    { phrase: 'sun(ny)?', emoji: ':sun_with_face:' },
-    { phrase: 'rainy?', emoji: ':cloud_with_rain:' },
-    { phrase: 'snowy?', emoji: ':snowflake:' },
+    { phrase: 'sun(?:ny)?', emoji: ':sun_with_face:' },
+    {
+      phrase: '(?:showers|rain(?:y|fall)?)',
+      emoji: ':cloud_with_rain:',
+    },
+    { phrase: '(?:flurries|snow(?:y|fall)?)', emoji: ':snowflake:' },
+    { phrase: 'ic[ey]', emoji: ':ice_cube:' },
+    {
+      phrase: '(thunderstorms?|lightning)',
+      emoji: ':cloud_lightning:',
+    },
   ];
   conditions.forEach((condition) => {
-    const re = new RegExp(`(${condition.phrase})(?! :)`, 'gi');
-    decorated = decorated.replaceAll(re, `$1 ${condition.emoji}`);
+    const re = new RegExp(
+      `(?!:)\\b(${condition.phrase})\\b(?! ?:)`,
+      'i',
+    );
+    decorated = decorated.replace(re, `$1 ${condition.emoji}`);
   });
 
   return decorated;
@@ -84,5 +98,10 @@ async function getWeatherForecast(officeAndGrid) {
     throw new Error(`getting weather forecast: ${err}`);
   }
 }
+
+export const internalFunctions = {
+  decorateForecast,
+  cleanName,
+};
 
 export default getWeatherForecast;

@@ -30,7 +30,6 @@ const lastSeenDBFileName = 'last-seen.json';
 // * Custom greetings/greeting fragments for specially-configured users.
 // * Add Guild IDs since member IDs are the same as user IDs.
 // * Read/write from files not located in run directory (e.g., XDG_DATA_HOME).
-// * Watch for "Hollywood Squares" 9-participant count and react.
 
 // TODO Incorporate Monday Morning Addendum into the date-based greeting.
 function buildDateGreeting(now) {
@@ -180,7 +179,11 @@ async function buildGreeting(
     greeting += ' I sure am glad to have someone to talk to again!';
   }
 
-  // TODO Only do this Hollywood Squares stuff when the number of users is going up.
+  // Because we only get here if the user has either just enabled video or just
+  // come into this channel (with video enabled, if this is even possible), we
+  // can assume that the count is increasing over its previous count, so no need
+  // to worry about sending encouraging Hollywood Squares messages as people are
+  // leaving the channel.
   const numOnline = channel.members.size;
   const hollywoodSquaresThreshold = 9;
   if (numOnline <= hollywoodSquaresThreshold) {
@@ -303,7 +306,7 @@ async function buildGreeting(
     }
   }
 
-  // Add the weather if it's been a couple hours since we last mentioned it.
+  // Add the weather if it's been a couple hours since we last greeted someone.
   if (
     differenceInHours(now, latestGreetingTime) >= 2 ||
     !latestGreetingTime
@@ -394,6 +397,7 @@ function makeGreeter(config, initialLastSeenDB) {
   } = config;
 
   let lastSeenDB = initialLastSeenDB;
+
   const greeter = (oldState, newState) => {
     const connected =
       newState.selfVideo &&
