@@ -390,6 +390,7 @@ function makeGreeter(config, initialLastSeenDB) {
   const {
     watchChannelId,
     announceChannelId,
+    presenceRoleId,
     mondayMorningAddendum,
     botTimeZone,
     devMode,
@@ -399,11 +400,51 @@ function makeGreeter(config, initialLastSeenDB) {
   let lastSeenDB = initialLastSeenDB;
 
   const greeter = (oldState, newState) => {
-    const connected =
+    const left =
+      oldState.selfVideo &&
+      oldState.channelId === watchChannelId &&
+      (!newState.selfVideo || newState.channelId !== watchChannelId);
+    if (left) {
+      if (presenceRoleId) {
+        newState.member.roles
+          .remove(presenceRoleId)
+          .then(() => {
+            console.log(
+              `removed presence role ${presenceRoleId} for member ${newState.member.id}`,
+            );
+          })
+          .catch((err) => {
+            console.error(
+              `unable to remove presence role ${presenceRoleId} for member ${newState.member.id}: ${err}`,
+            );
+          });
+      }
+      return;
+    }
+
+    const joined =
       newState.selfVideo &&
       newState.channelId === watchChannelId &&
       (!oldState.selfVideo || oldState.channelId !== watchChannelId);
-    if (!connected) return;
+
+    if (!joined) {
+      return;
+    }
+
+    if (presenceRoleId) {
+      newState.member.roles
+        .add(presenceRoleId)
+        .then(() => {
+          console.log(
+            `added presence role ${presenceRoleId} for member ${newState.member.id}`,
+          );
+        })
+        .catch((err) => {
+          console.error(
+            `unable to add presence role ${presenceRoleId} for member ${newState.member.id}: ${err}`,
+          );
+        });
+    }
 
     const memberId = newState.member.id;
     const lastSeenUTC = lastSeenDB.members
@@ -568,6 +609,7 @@ dotEnvConfig();
 const config = {
   watchChannelId: process.env.WATCH_VOICE_CHANNEL_ID,
   announceChannelId: process.env.ANNOUNCE_CHANNEL_ID,
+  presenceRoleId: process.env.PRESENCE_ROLE_ID,
   botTimeZone: process.env.BOT_TIME_ZONE || 'UTC',
   mondayMorningAddendum: process.env.MONDAY_MORNING_ADDENDUM,
   weatherLocation: process.env.WEATHER_GOV_OFFICE_AND_GRID,
