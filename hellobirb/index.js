@@ -559,6 +559,61 @@ function makeGreeter(config, initialLastSeenDB) {
   return greeter;
 }
 
+function maybeReact(message) {
+  const { author, content, mentions } = message;
+  if (author.bot) {
+    return;
+  }
+
+  // Note: Cannot use a literal bird emoji here for some reason: Discord
+  // complains about it being an unknown emoji, even though the cowboy below
+  // works fine.
+  const birdEmoji = String.fromCodePoint(0x1f426);
+
+  const wasMentioned = mentions.has(message.guild.me.id);
+  if (wasMentioned) {
+    if (content.match(/\bthank(s| you)\b/i)) {
+      const youreWelcome = [
+        "Oh, you're welcome! :relaxed:",
+        'Cheep cheep! Of course! :bird:',
+        "You bet! I'd do anything for you! :upside_down:",
+      ];
+      const reply =
+        youreWelcome[Math.floor(Math.random() * youreWelcome.length)];
+      message.reply(reply).catch((err) => {
+        console.err(`error replying to mention: ${err}`);
+      });
+    }
+
+    message
+      .react(birdEmoji)
+      .catch((err) =>
+        console.error(
+          `unable to react with ${birdEmoji} to message: ${err}`,
+        ),
+      );
+  }
+  if (content.match(/\bhowdy\b/i)) {
+    const cowboyEmoji = '🤠';
+    message
+      .react(cowboyEmoji)
+      .catch((err) =>
+        console.error(
+          `unable to react with ${cowboyEmoji} to message: ${err}`,
+        ),
+      );
+  }
+  if (content.match(/\b(?:hello)?bir[bd]\b/i)) {
+    message
+      .react(birdEmoji)
+      .catch((err) =>
+        console.error(
+          `unable to react with ${birdEmoji} to message: ${err}`,
+        ),
+      );
+  }
+}
+
 // Initialize the client to handle the events we care about.
 // At this point, just voice state changes.
 function initClient(config) {
@@ -572,6 +627,8 @@ function initClient(config) {
   botIntents.add(
     Intents.FLAGS.GUILDS,
     Intents.FLAGS.GUILD_VOICE_STATES,
+    Intents.FLAGS.GUILD_MESSAGES,
+    Intents.FLAGS.GUILD_MESSAGE_REACTIONS,
   );
   const client = new Client({ intents: botIntents });
 
@@ -623,6 +680,8 @@ function initClient(config) {
       }
     }, thirtyMinutes);
   });
+
+  client.on('messageCreate', maybeReact);
 
   // Watch for users turning on their cameras in a voice channel.
   const lastSeenDB = loadLastSeenDB();
