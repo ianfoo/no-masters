@@ -103,6 +103,10 @@ function getWeekendPromptIfMonday(
     "What's the best thing you ate this weekend?",
     'Did you watch anything good this weekend?',
     'Did you do anything cool this weekend?',
+    "Did you also get into a fight where you smashed a pool cue over someone's head this weekend?",
+    'Did you steal any cars this weekend?',
+    'Were you involved in a high speed chase this weekend?',
+    'Did you win any street races this weekend?',
   ];
   const n = Math.floor(Math.random() * prompts.length);
   greeting += prompts[n];
@@ -172,7 +176,7 @@ async function buildGreeting(
     }
   } else {
     greeting +=
-      "I think I'm new since you were last here. It's so nice to meet you! :hugging:";
+      " I think I'm new since you were last here. It's so nice to meet you! :hugging:";
   }
 
   if (differenceInDays(now, latestGreetingTime) >= 2) {
@@ -200,7 +204,6 @@ async function buildGreeting(
   let motd = '';
   let onThisDay = '';
 
-  // TODO Only show first one here message if there were previously zero people here.
   if (!isToday(latestGreetingTime) || alwaysFirst) {
     if (numOnline === 1 || alwaysFirst) {
       greeting += " You're the first one here. ";
@@ -268,20 +271,44 @@ async function buildGreeting(
       'a flower! :sunflower:',
       'a flower! :rose:',
       'some flowers! :bouquet:',
-      'a book I really like! :closed_book:',
+      'a cactus! :cactus:',
+      'a shell! :shell:',
+      'a ball of yarn! :yarn:',
+      'this book I really like! :closed_book:',
       'a poem I wrote! :scroll:',
+      'a new playlist I made! :notes:',
       'some chocolate! :chocolate_bar:',
       'a cookie! :cookie:',
+      'a doughnut! :doughnut:',
       'some tea! :tea:',
+      'a cocktail! :cocktail:',
+      'a nice tall glass of whisky :tumbler_glass:',
+      'a cold beer! :beer:',
+      'some classy wine! :wine_glass:',
       'a nice cup of coffee :coffee:',
+      'a yerba mate! :mate:',
+      'this corn! :corn:',
+      'some cheese! :cheese:',
       'a burrito! :burrito:',
       'a taco! :taco:',
+      'some fries! :fries:',
+      'a slice of pizza! :pizza:',
       'some sushi! :sushi:',
+      'some ramen! :ramen:',
+      'a dumpling! :dumpling:',
       'some takeout! :takeout_box:',
       'a bed! :bed:',
       'a dagger! :dagger:',
+      'a spoon! :spoon:',
+      'a crown! :crown:',
+      'this shoe! :athletic_shoe:',
+      'a mouse! :mouse:',
+      'a snake! :snake:',
       'a potion I stole from a laboratory! :test_tube:',
       'the skull of your vanquished enemy! :skull:',
+      'this hairball I pulled from your shower drain! :shower:',
+      'this bone that I definitely found completely innocently! :bone:',
+      'this purse that someone left unattended for a moment! :handbag:',
     ];
     // TODO Handle awkward "I brought you a flower, and a flower" and related
     // cases. It's handled here with string comparison, but probably build up
@@ -567,7 +594,7 @@ function initClient(config) {
         if (n < 25) {
           client.user.setActivity('outside', { type: 'PLAYING' });
         } else if (n < 50) {
-          const shows = [
+          const watching = [
             '30 Rock',
             'Parks and Rec',
             'Brooklyn 99',
@@ -576,9 +603,12 @@ function initClient(config) {
             "Bob's Burgers",
             'Rick and Morty',
             'bird documentaries',
+            'the world burn 🔥',
           ];
-          const showIdx = Math.floor(Math.random() * shows.length);
-          client.user.setActivity(shows[showIdx], {
+          const watchingIdx = Math.floor(
+            Math.random() * watching.length,
+          );
+          client.user.setActivity(watching[watchingIdx], {
             type: 'WATCHING',
           });
         } else if (n < 60) {
