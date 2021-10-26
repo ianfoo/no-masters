@@ -580,59 +580,124 @@ function makeGreeter(config, initialLastSeenDB) {
   return greeter;
 }
 
-function maybeReact(message) {
-  const { author, content, mentions } = message;
-  if (author.bot) {
+function maybeReact(message, watchChannelId) {
+  if (message.author.bot) {
     return;
   }
 
-  // Note: Cannot use a literal bird emoji here for some reason: Discord
-  // complains about it being an unknown emoji, even though the cowboy below
-  // works fine.
-  const birdEmoji = String.fromCodePoint(0x1f426);
+  // Make sure only to look at messages in the same guild as the watched voice
+  // channel.
+  message.guild.channels
+    .fetch()
+    .then((channels) => {
+      if (!channels.has(watchChannelId)) {
+        return;
+      }
 
-  const wasMentioned = mentions.has(message.guild.me.id);
-  if (wasMentioned) {
-    if (content.match(/\bthank(s| you)\b/i)) {
-      const youreWelcome = [
-        "Oh, you're welcome! :relaxed:",
-        'Cheep cheep! Of course! :bird:',
-        "You bet! I'd do anything for you! :upside_down:",
-      ];
-      const reply =
-        youreWelcome[Math.floor(Math.random() * youreWelcome.length)];
-      message.reply(reply).catch((err) => {
-        console.err(`error replying to mention: ${err}`);
-      });
-    }
+      // Note: Cannot use a literal bird emoji here for some reason: Discord
+      // complains about it being an unknown emoji, even though the cowboy below
+      // works fine.
+      const birdEmoji = String.fromCodePoint(0x1f426);
 
-    message
-      .react(birdEmoji)
-      .catch((err) =>
-        console.error(
-          `unable to react with ${birdEmoji} to message: ${err}`,
-        ),
+      const { content, mentions } = message;
+
+      // Note: a mention suffixed by certain punctuation (e.g., "!", ".", ":")
+      // results in a role mention rather than a user mention (for some reason I
+      // don't know), so we need to look for the bot's role being mentioned in
+      // addition to the bot's user.
+      const botUserMentioned = mentions.users.has(
+        message.guild.me.id,
       );
-  }
-  if (content.match(/\bhowdy\b/i)) {
-    const cowboyEmoji = '🤠';
-    message
-      .react(cowboyEmoji)
-      .catch((err) =>
-        console.error(
-          `unable to react with ${cowboyEmoji} to message: ${err}`,
-        ),
+      const botRoleMentioned = mentions.roles.has(
+        message.guild.me.roles.botRole?.id,
       );
-  }
-  if (content.match(/\b(?:hello)?bir[bd]\b/i)) {
-    message
-      .react(birdEmoji)
-      .catch((err) =>
-        console.error(
-          `unable to react with ${birdEmoji} to message: ${err}`,
-        ),
-      );
-  }
+      if (botUserMentioned || botRoleMentioned) {
+        message
+          .react(birdEmoji)
+          .catch((err) =>
+            console.error(
+              `unable to react with ${birdEmoji} to message: ${err}`,
+            ),
+          );
+
+        if (content.match(/\b(?:thank(?:s| you)|t\/?y)\b/i)) {
+          const youreWelcome = [
+            "Oh, you're welcome! :relaxed:",
+            'Cheep cheep! Of course! :bird:',
+            "You bet! I'd do anything for you! :upside_down:",
+          ];
+          const reply =
+            youreWelcome[
+              Math.floor(Math.random() * youreWelcome.length)
+            ];
+          message
+            .reply(reply)
+            .then(() => {
+              console.log(
+                `replied to mention by ${message.member?.displayName}`,
+              );
+            })
+            .catch((err) => {
+              console.err(
+                `error replying to mention by ${message.member?.displayName}: ${err}`,
+              );
+            });
+        }
+      }
+
+      if (content.match(/\bhowdy\b/i)) {
+        const cowboyEmoji = '🤠';
+        message
+          .react(cowboyEmoji)
+          .catch((err) =>
+            console.error(
+              `unable to react with ${cowboyEmoji} to message: ${err}`,
+            ),
+          );
+      }
+      if (content.match(/\b(?:hello)?bir[bd]\b/i)) {
+        message
+          .react(birdEmoji)
+          .catch((err) =>
+            console.error(
+              `unable to react with ${birdEmoji} to message: ${err}`,
+            ),
+          );
+      }
+      if (content.match(/\bpunch\b/i)) {
+        const fistEmoji = '🤜';
+        const boomEmoji = '💥';
+        message
+          .react(fistEmoji)
+          .then(() =>
+            message
+              .react(boomEmoji)
+              .catch((err) =>
+                console.error(
+                  `unable to react with ${boomEmoji} to message: ${err}`,
+                ),
+              ),
+          )
+          .catch((err) =>
+            console.error(
+              `unable to react with ${fistEmoji} to message: ${err}`,
+            ),
+          );
+      }
+      if (content.match(/\bstab\b/i)) {
+        const daggerEmoji = '🗡';
+        message
+          .react(daggerEmoji)
+          .catch((err) =>
+            console.error(
+              `unable to react with ${daggerEmoji} to message: ${err}`,
+            ),
+          );
+      }
+    })
+    .catch((err) => {
+      console.error(`error fetching channels: ${err}`);
+    });
 }
 
 // Initialize the client to handle the events we care about.
@@ -702,7 +767,9 @@ function initClient(config) {
     }, thirtyMinutes);
   });
 
-  client.on('messageCreate', maybeReact);
+  client.on('messageCreate', (message) => {
+    maybeReact(message, config.watchChannelId);
+  });
 
   // Watch for users turning on their cameras in a voice channel.
   const lastSeenDB = loadLastSeenDB();
