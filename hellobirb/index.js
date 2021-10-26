@@ -87,6 +87,8 @@ function getWeekendPromptIfMonday(
   mondayMorningAddendum,
   isMorning,
 ) {
+  // TODO Be smarter about case when first day of work week is not Monday,
+  // in the event of holidays.
   if (!isMonday(now)) {
     return '';
   }
@@ -103,7 +105,7 @@ function getWeekendPromptIfMonday(
     "What's the best thing you ate this weekend?",
     'Did you watch anything good this weekend?',
     'Did you do anything cool this weekend?',
-    "Did you also get into a fight where you smashed a pool cue over someone's head this weekend?",
+    "Did you also get into a fight where you smashed a pool cue over someone's head this weekend, or was that just me?",
     'Did you steal any cars this weekend?',
     'Were you involved in a high speed chase this weekend?',
     'Did you win any street races this weekend?',
@@ -131,6 +133,7 @@ async function buildGreeting(
     goodToSeeYouDays,
     alwaysGreet,
     alwaysFirst,
+    alwaysWeather,
   },
 ) {
   const hour = now.getHours();
@@ -188,11 +191,18 @@ async function buildGreeting(
   // can assume that the count is increasing over its previous count, so no need
   // to worry about sending encouraging Hollywood Squares messages as people are
   // leaving the channel.
-  const numOnline = channel.members.size;
+
+  // numOnline counts members in the channel with video active.
+  const numOnline = channel.members.reduce(
+    (acc, m) => acc + (m.voice.selfVideo ? 1 : 0),
+    0,
+  );
+  console.log(`members online in this channel: ${numOnline}`);
+
   const hollywoodSquaresThreshold = 9;
   if (numOnline <= hollywoodSquaresThreshold) {
     if (numOnline === hollywoodSquaresThreshold) {
-      greeting += ` Woo! We have enough for Hollywood Squares! :raised_hands:`;
+      greeting += ` Woo! We have enough for Hollywood Squares! :movie_camera::white_square_button::raised_hands:`;
     } else if (numOnline >= hollywoodSquaresThreshold - 2) {
       const numNeeded = hollywoodSquaresThreshold - numOnline;
       greeting += ` We're so close to Hollywood Squares! Only ${numNeeded} more! :raised_hands:`;
@@ -329,14 +339,40 @@ async function buildGreeting(
       }
     }
     if (giftCount > 1) {
-      greeting += ' Because I really like you. :pleading_face:';
+      const multiGiftGreetings = [
+        ' Because I really like you. :pleading_face:',
+        " Because you're special. :upside_down:",
+        ' Because you deserve it. :relaxed:',
+      ];
+      greeting +=
+        multiGiftGreetings[
+          Math.floor(Math.random() * multiGiftGreetings.length)
+        ];
     }
   }
 
-  // Add the weather if it's been a couple hours since we last greeted someone.
+  const weekend = getWeekendPromptIfMonday(
+    now,
+    mondayMorningAddendum,
+    isMorning,
+  );
+  if (weekend) {
+    greeting += `\n\n${weekend.trim()}`;
+  }
+
+  // Add the first-greeting-only bits, if they apply.
+  if (motd) {
+    greeting += `\n\n${motd.trim()}`;
+  }
+  if (onThisDay) {
+    greeting += `\n\n${onThisDay.trim()}`;
+  }
+
+  // Add the weather if it's been a few hours since we last greeted someone.
   if (
-    differenceInHours(now, latestGreetingTime) >= 2 ||
-    !latestGreetingTime
+    differenceInHours(now, latestGreetingTime) >= 3 ||
+    !latestGreetingTime ||
+    alwaysWeather
   ) {
     const weather = await buildWeatherMessage(weatherLocation);
     if (weather) {
@@ -348,27 +384,10 @@ async function buildGreeting(
     );
   }
 
-  // Add the first-greeting-only bits, if they apply.
-  if (motd) {
-    greeting += `\n\n${motd.trim()}`;
-  }
-  if (onThisDay) {
-    greeting += `\n\n${onThisDay.trim()}`;
-  }
-
   const waterPrompt = Math.floor(Math.random() * 7 < 2)
     ? '\n\nBe sure to drink plenty of water today! :sweat_drops:'
     : '';
   greeting += waterPrompt;
-
-  const weekend = getWeekendPromptIfMonday(
-    now,
-    mondayMorningAddendum,
-    isMorning,
-  );
-  if (weekend) {
-    greeting += `\n\n${weekend.trim()}`;
-  }
 
   return greeting;
 }
@@ -437,12 +456,12 @@ function makeGreeter(config, initialLastSeenDB) {
           .remove(presenceRoleId)
           .then(() => {
             console.log(
-              `removed presence role ${presenceRoleId} for member ${newState.member.id}`,
+              `removed presence role ${presenceRoleId} for member ${newState.member.displayName}`,
             );
           })
           .catch((err) => {
             console.error(
-              `unable to remove presence role ${presenceRoleId} for member ${newState.member.id}: ${err}`,
+              `unable to remove presence role ${presenceRoleId} for member ${newState.member.displayName}: ${err}`,
             );
           });
       }
@@ -463,12 +482,12 @@ function makeGreeter(config, initialLastSeenDB) {
         .add(presenceRoleId)
         .then(() => {
           console.log(
-            `added presence role ${presenceRoleId} for member ${newState.member.id}`,
+            `added presence role ${presenceRoleId} for member ${newState.member.displayName}`,
           );
         })
         .catch((err) => {
           console.error(
-            `unable to add presence role ${presenceRoleId} for member ${newState.member.id}: ${err}`,
+            `unable to add presence role ${presenceRoleId} for member ${newState.member.displayName}: ${err}`,
           );
         });
     }
@@ -505,7 +524,6 @@ function makeGreeter(config, initialLastSeenDB) {
           return;
         }
 
-        // TODO Why is this causing a 403 now when run on my laptop?
         chan.sendTyping().catch((err) => {
           console.error(`failed to send typing event: ${err}`);
         });
@@ -525,6 +543,7 @@ function makeGreeter(config, initialLastSeenDB) {
           goodToSeeYouDays: devMode.alwaysGoodToSeeYou ? 0 : 7,
           alwaysGreet: devMode.alwaysGreet,
           alwaysFirst: devMode.alwaysFirst,
+          alwaysWeather: devMode.alwaysWeather,
           weatherLocation,
         };
 
@@ -540,7 +559,9 @@ function makeGreeter(config, initialLastSeenDB) {
           greetOpts,
         );
 
-        console.log(`saying hello to ${newState.member}!`);
+        console.log(
+          `saying hello to ${newState.member.displayName}!`,
+        );
 
         // Wait a few seconds to make the interaction feel a bit more "natural,"
         // then send the greeting.
@@ -551,7 +572,7 @@ function makeGreeter(config, initialLastSeenDB) {
       })
       .catch((err) => {
         console.error(
-          `error greeting user in ${announceChannelId}: ${err}`,
+          `error greeting member ${newState.member.displayName} in ${announceChannelId}: ${err}`,
         );
       });
   };
@@ -709,6 +730,7 @@ const config = {
   // alwaysGift
   // alwaysExtraGift
   // alwaysGoodToSeeYou
+  // alwaysWeather
   devMode: (process.env.DEV_MODE || '')
     .split(',')
     .filter((s) => s.length > 0)
