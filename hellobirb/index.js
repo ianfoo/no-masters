@@ -664,7 +664,7 @@ function maybeReact(message, watchChannelId) {
             ),
           );
       }
-      if (content.match(/\bpunch\b/i)) {
+      if (content.match(/\b(?:throat[- ]?)?punch(?:ed|ing)?\b/i)) {
         const fistEmoji = '🤜';
         const boomEmoji = '💥';
         message
@@ -684,7 +684,7 @@ function maybeReact(message, watchChannelId) {
             ),
           );
       }
-      if (content.match(/\bstab\b/i)) {
+      if (content.match(/\bstab(?:bed|bing)?\b/i)) {
         const daggerEmoji = '🗡';
         message
           .react(daggerEmoji)
