@@ -284,12 +284,23 @@ async function buildGreeting(
       'a cactus! :cactus:',
       'a shell! :shell:',
       'a ball of yarn! :yarn:',
+      'a roll of toilet paper! :roll_of_paper:',
       'this book I really like! :closed_book:',
+      "today's newspaper! :newspaper:",
       'a poem I wrote! :scroll:',
+      'this letter I wrote to you! :envelope:',
       'a new playlist I made! :notes:',
       'some chocolate! :chocolate_bar:',
       'a cookie! :cookie:',
       'a doughnut! :doughnut:',
+      'a croissant! :croissant:',
+      'pancakes! :pancakes:',
+      'a waffle! :waffle:',
+      'a bagel! :bagel:',
+      'a sandwich! :sandwich:',
+      'a fresh loaf of bread I baked! :bread:',
+      'an avocado! :avocado:',
+      'blueberries! :blueberries:',
       'some tea! :tea:',
       'a cocktail! :cocktail:',
       'a nice tall glass of whisky :tumbler_glass:',
@@ -301,22 +312,34 @@ async function buildGreeting(
       'some cheese! :cheese:',
       'a burrito! :burrito:',
       'a taco! :taco:',
+      'a tamale! :tamale:',
+      'a burger! :hamburger:',
       'some fries! :fries:',
+      'a potato! :potato:',
       'a slice of pizza! :pizza:',
       'some sushi! :sushi:',
       'some ramen! :ramen:',
       'a dumpling! :dumpling:',
       'some takeout! :takeout_box:',
       'a bed! :bed:',
+      'a candle! :candle:',
       'a dagger! :dagger:',
       'a spoon! :spoon:',
+      'some spoons! :spoon::spoon::spoon:',
       'a crown! :crown:',
       'this shoe! :athletic_shoe:',
+      'an AOL CD-ROM! :cd:',
       'a mouse! :mouse:',
       'a snake! :snake:',
       'a potion I stole from a laboratory! :test_tube:',
       'the skull of your vanquished enemy! :skull:',
+      'a fire extinguisher, which is great for throwing through windows! :fire_extinguisher:',
+      'bricks to build things with, or throw through windows! :bricks:',
+      'batteries to huck at assailants! :battery::battery:',
+      'a bag of legitimately-obtained money! :moneybag:',
       'this hairball I pulled from your shower drain! :shower:',
+      'a pill I found on the street! :pill:',
+      'a bomb! :bomb:',
       'this bone that I definitely found completely innocently! :bone:',
       'this purse that someone left unattended for a moment! :handbag:',
     ];
@@ -451,6 +474,23 @@ function makeGreeter(config, initialLastSeenDB) {
       oldState.channelId === watchChannelId &&
       (!newState.selfVideo || newState.channelId !== watchChannelId);
     if (left) {
+      if (oldState.serverMute) {
+        oldState
+          .setMute(
+            false,
+            'remove server mute upon leaving silent channel',
+          )
+          .then(() => {
+            console.log(
+              `unmuted ${oldState.member.displayName} upon leaving channel`,
+            );
+          })
+          .catch((err) => {
+            console.error(
+              `unable to unmute ${oldState.member.displayName}: ${err}`,
+            );
+          });
+      }
       if (presenceRoleId) {
         newState.member.roles
           .remove(presenceRoleId)
@@ -566,7 +606,24 @@ function makeGreeter(config, initialLastSeenDB) {
         // Wait a few seconds to make the interaction feel a bit more "natural,"
         // then send the greeting.
         setTimeout(
-          () => chan.send(greeting),
+          () => {
+            chan.send(greeting);
+            if (!newState.mute) {
+              newState
+                .setMute(true, 'This is a silent channel')
+                .then(() => {
+                  console.log(`muted ${newState.member.displayName}`);
+                  chan.send(
+                    `FYI, ${newState.member}, I muted you because this is a silent channel!`,
+                  );
+                })
+                .catch((err) => {
+                  console.error(
+                    `failed to mute user ${newState.member.displayName}: ${err}`,
+                  );
+                });
+            }
+          },
           devMode.alwaysGreet ? 0 : greetingDelayMs,
         );
       })
@@ -746,6 +803,9 @@ function initClient(config) {
             "Bob's Burgers",
             'Rick and Morty',
             'bird documentaries',
+            'Bird Game',
+            'The Birds',
+            'Russian dash cam footage',
             'the world burn 🔥',
           ];
           const watchingIdx = Math.floor(
