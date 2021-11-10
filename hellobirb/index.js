@@ -578,8 +578,8 @@ function makeGreeter(config, initialLastSeenDB) {
 
         const greetOpts = {
           mondayMorningAddendum,
-          giftProbability: devMode.alwaysGift ? 100 : 60,
-          extraGiftProbability: devMode.alwaysExtraGift ? 100 : 18,
+          giftProbability: devMode.alwaysGift ? 100 : 80,
+          extraGiftProbability: devMode.alwaysExtraGift ? 100 : 25,
           goodToSeeYouDays: devMode.alwaysGoodToSeeYou ? 0 : 7,
           alwaysGreet: devMode.alwaysGreet,
           alwaysFirst: devMode.alwaysFirst,
