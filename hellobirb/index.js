@@ -13,11 +13,11 @@ import {
 } from 'date-fns';
 import tzPkg from 'date-fns-tz';
 import * as http from 'http';
+import glob from 'glob';
 import getWeatherForecast from './lib/weather.js';
 
 const { utcToZonedTime } = tzPkg;
 
-const greetingDelayMs = 3000;
 const lastSeenDBFileName = 'last-seen.json';
 
 // TODO
@@ -211,7 +211,7 @@ async function buildGreeting(
     }
   }
 
-  let motd = '';
+  const motd = [];
   let onThisDay = '';
 
   if (!isToday(latestGreetingTime) || alwaysFirst) {
@@ -227,16 +227,24 @@ async function buildGreeting(
     //
     // TODO Store in a database or something better than a text file.
     try {
-      const motdFile = 'motd.txt';
-      if (existsSync(motdFile)) {
-        motd = readFileSync(motdFile).toString();
+      const motdFiles = glob.sync('motd*.txt');
+      motdFiles.forEach((motdFile) => {
+        if (existsSync(motdFile)) {
+          const motdMessage = readFileSync(motdFile).toString();
+          motd.push(motdMessage);
+          console.log(`read motd file ${motdFile}`);
 
-        // Archive previous MOTD.
-        if (!alwaysGreet) {
-          mkdirSync('.motd', { recursive: true });
-          renameSync(motdFile, `.motd/motd.${now.toISOString()}.txt`);
+          // Archive previous MOTD.
+          if (!alwaysGreet) {
+            mkdirSync('.motd', { recursive: true });
+            const baseName = motdFile.replace(/\.txt$/, '');
+            renameSync(
+              motdFile,
+              `.motd/${baseName}.${now.toISOString()}.txt`,
+            );
+          }
         }
-      }
+      });
     } catch (err) {
       console.error(`error adding motd: ${err}`);
     }
@@ -384,9 +392,6 @@ async function buildGreeting(
   }
 
   // Add the first-greeting-only bits, if they apply.
-  if (motd) {
-    greeting += `\n\n${motd.trim()}`;
-  }
   if (onThisDay) {
     greeting += `\n\n${onThisDay.trim()}`;
   }
@@ -412,7 +417,56 @@ async function buildGreeting(
     : '';
   greeting += waterPrompt;
 
-  return greeting;
+  return { greeting, motd };
+}
+
+// Send messages of the day to the channel.
+function sendMotd(motd, chan, defaultTypingDelay) {
+  const processMessage = (input) => {
+    // If the message specifies a delay at the top of the file, use that
+    // instaed of the default and strip this instruction from the message.
+    const delayInstruction = /^#\s*DELAY:\s*(\d+).*\n\n/;
+    const match = input.match(delayInstruction);
+    if (match) {
+      const message = input.replace(delayInstruction, '');
+      const typingDelay =
+        parseInt(match[1], 10) || defaultTypingDelay;
+      return { message, typingDelay };
+    }
+    return { message: input, typingDelay: defaultTypingDelay };
+  };
+
+  chan.sendTyping().catch((err) => {
+    console.error(`failed to send typing event during motd: ${err}`);
+  });
+
+  setTimeout(() => {
+    let totalDelay = 0;
+    motd.forEach((rawMsg, i) => {
+      const { message, typingDelay } = processMessage(rawMsg);
+      totalDelay += typingDelay;
+      setTimeout(() => {
+        chan.send(message.trim()).then(() => {
+          console.log(
+            `${new Date()}: sent message of the day #${i + 1} (${
+              message.length
+            } chars, ${typingDelay} ms incremental delay, ${totalDelay} total delay)`,
+          );
+          // If this isn't the last message, send a typing event to simulate
+          // birb typing another message.
+          if (i < motd.length - 1) {
+            setTimeout(() => {
+              chan.sendTyping().catch((err) => {
+                console.error(
+                  `failed to send typing event during motd: ${err}`,
+                );
+              });
+            }, typingDelay * 0.6);
+          }
+        });
+      }, totalDelay);
+    });
+  }, defaultTypingDelay);
 }
 
 // Update last seen entry for this guild member. Will still return
@@ -464,6 +518,7 @@ function makeGreeter(config, initialLastSeenDB) {
     botTimeZone,
     devMode,
     weatherLocation,
+    typingDelayMs,
   } = config;
 
   let lastSeenDB = initialLastSeenDB;
@@ -590,7 +645,7 @@ function makeGreeter(config, initialLastSeenDB) {
         // TODO random values should be parameterized, for testing.
         //      (i.e., move the random calls out of buildGreeting)
         // TODO gifts should be passed in as a parameter.
-        const greeting = await buildGreeting(
+        const { greeting, motd } = await buildGreeting(
           newState.member,
           newState.channel,
           now,
@@ -605,27 +660,28 @@ function makeGreeter(config, initialLastSeenDB) {
 
         // Wait a few seconds to make the interaction feel a bit more "natural,"
         // then send the greeting.
-        setTimeout(
-          () => {
-            chan.send(greeting);
-            if (!newState.mute) {
-              newState
-                .setMute(true, 'This is a silent channel')
-                .then(() => {
-                  console.log(`muted ${newState.member.displayName}`);
-                  chan.send(
-                    `FYI, ${newState.member}, I muted you because this is a silent channel!`,
-                  );
-                })
-                .catch((err) => {
-                  console.error(
-                    `failed to mute user ${newState.member.displayName}: ${err}`,
-                  );
-                });
+        setTimeout(() => {
+          chan.send(greeting).then(() => {
+            if (motd?.length) {
+              sendMotd(motd, chan, typingDelayMs);
             }
-          },
-          devMode.alwaysGreet ? 0 : greetingDelayMs,
-        );
+          });
+          if (!newState.mute) {
+            newState
+              .setMute(true, 'This is a silent channel')
+              .then(() => {
+                console.log(`muted ${newState.member.displayName}`);
+                chan.send(
+                  `FYI, ${newState.member}, I muted you because this is a silent channel!`,
+                );
+              })
+              .catch((err) => {
+                console.error(
+                  `failed to mute user ${newState.member.displayName}: ${err}`,
+                );
+              });
+          }
+        }, typingDelayMs);
       })
       .catch((err) => {
         console.error(
@@ -682,6 +738,7 @@ function maybeReact(message, watchChannelId) {
             "Oh, you're welcome! :relaxed:",
             'Cheep cheep! Of course! :bird:',
             "You bet! I'd do anything for you! :upside_down:",
+            "I'm here to make you happy! :relaxed:",
           ];
           const reply =
             youreWelcome[
@@ -791,7 +848,7 @@ function initClient(config) {
         client.user.setActivity('the sunrise', { type: 'WATCHING' });
       } else {
         const n = Math.floor(Math.random() * 100);
-        if (n < 25) {
+        if (n < 20) {
           client.user.setActivity('outside', { type: 'PLAYING' });
         } else if (n < 50) {
           const watching = [
@@ -803,6 +860,8 @@ function initClient(config) {
             "Bob's Burgers",
             'Rick and Morty',
             'bird documentaries',
+            'Roadrunner cartoons',
+            'the tide roll away',
             'Bird Game',
             'The Birds',
             'Russian dash cam footage',
@@ -850,6 +909,7 @@ const config = {
   botTimeZone: process.env.BOT_TIME_ZONE || 'UTC',
   mondayMorningAddendum: process.env.MONDAY_MORNING_ADDENDUM,
   weatherLocation: process.env.WEATHER_GOV_OFFICE_AND_GRID,
+  typingDelayMs: process.env.TYPING_DELAY_MS || 3000,
 
   // Dev Mode Options:
   // alwaysGreet
