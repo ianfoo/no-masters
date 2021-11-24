@@ -436,9 +436,14 @@ function sendMotd(motd, chan, defaultTypingDelay) {
     return { message: input, typingDelay: defaultTypingDelay };
   };
 
-  chan.sendTyping().catch((err) => {
-    console.error(`failed to send typing event during motd: ${err}`);
-  });
+  const oneMinute = 60 * 1000;
+  setTimeout(() => {
+    chan.sendTyping().catch((err) => {
+      console.error(
+        `failed to send typing event during motd: ${err}`,
+      );
+    });
+  }, oneMinute - 10000);
 
   setTimeout(() => {
     let totalDelay = 0;
@@ -466,7 +471,7 @@ function sendMotd(motd, chan, defaultTypingDelay) {
         });
       }, totalDelay);
     });
-  }, defaultTypingDelay);
+  }, oneMinute);
 }
 
 // Update last seen entry for this guild member. Will still return
