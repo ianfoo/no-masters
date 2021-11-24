@@ -740,6 +740,11 @@ function maybeReact(message, watchChannelId) {
         const sketchyMatch = content.match(
           /\b(sketchy|dodgy|shifty|dangerous|violent|sus(?:picious)?|disingenuous|irreverent|criminal)\b/i,
         );
+        const bathroomMatch = content.match(
+          /\b(bathroom|toilet|poop(?:y|ing)?|pee(?:ing)?|piss(?:y|ing)?)\b/i,
+        );
+        const fightMatch = content.match(/\bfight(?:ing)?\b/i);
+
         if (thanksMatch) {
           const youreWelcome = [
             "Oh, you're welcome! :relaxed:",
@@ -753,10 +758,19 @@ function maybeReact(message, watchChannelId) {
             ];
         } else if (sketchyMatch) {
           const word = sketchyMatch[1];
-          const exclamation = `${word[0].toUpperCase()}${word
-            .substring(1)
-            .toLowerCase()}`;
+          const exclamation =
+            word[0].toUpperCase() + word.substring(1).toLowerCase();
           reply = `${exclamation}?!\n\nno u`;
+        } else if (bathroomMatch) {
+          const match = bathroomMatch[1];
+          const where =
+            match === 'bathroom' ? 'there' : 'the bathroom';
+          const word =
+            match[0].toUpperCase() + match.substring(1).toLowerCase();
+          reply = `${word}?! You're sending this from ${where}, aren't you? I'm not a toilet! :sob:`;
+        } else if (fightMatch) {
+          reply =
+            "A fight?! Let's go! I'm ready to kick some butt! :rage: Let me just grab my pool cue and some brass knuckles.";
         }
         if (reply) {
           message
