@@ -733,17 +733,32 @@ function maybeReact(message, watchChannelId) {
             ),
           );
 
-        if (content.match(/\b(?:thank(?:s| you)|t\/?y)\b/i)) {
+        let reply;
+        const thanksMatch = content.match(
+          /\b(?:thank(?:s| you)|t\/?y)\b/i,
+        );
+        const sketchyMatch = content.match(
+          /\b(sketchy|dodgy|shifty|dangerous|violent|sus(?:picious)?|disingenuous|irreverent|criminal)\b/i,
+        );
+        if (thanksMatch) {
           const youreWelcome = [
             "Oh, you're welcome! :relaxed:",
             'Cheep cheep! Of course! :bird:',
             "You bet! I'd do anything for you! :upside_down:",
             "I'm here to make you happy! :relaxed:",
           ];
-          const reply =
+          reply =
             youreWelcome[
               Math.floor(Math.random() * youreWelcome.length)
             ];
+        } else if (sketchyMatch) {
+          const word = sketchyMatch[1];
+          const exclamation = `${word[0].toUpperCase()}${word
+            .substring(1)
+            .toLowerCase()}`;
+          reply = `${exclamation}?!\n\nno u`;
+        }
+        if (reply) {
           message
             .reply(reply)
             .then(() => {
@@ -752,7 +767,7 @@ function maybeReact(message, watchChannelId) {
               );
             })
             .catch((err) => {
-              console.err(
+              console.error(
                 `error replying to mention by ${message.member?.displayName}: ${err}`,
               );
             });
