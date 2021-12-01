@@ -391,11 +391,6 @@ async function buildGreeting(
     greeting += `\n\n${weekend.trim()}`;
   }
 
-  // Add the first-greeting-only bits, if they apply.
-  if (onThisDay) {
-    greeting += `\n\n${onThisDay.trim()}`;
-  }
-
   // Add the weather if it's been a few hours since we last greeted someone.
   if (
     differenceInHours(now, latestGreetingTime) >= 3 ||
@@ -417,14 +412,14 @@ async function buildGreeting(
     : '';
   greeting += waterPrompt;
 
-  return { greeting, motd };
+  return { greeting, onThisDay, motd };
 }
 
 // Send messages of the day to the channel.
 function sendMotd(motd, chan, defaultTypingDelay) {
   const processMessage = (input) => {
     // If the message specifies a delay at the top of the file, use that
-    // instaed of the default and strip this instruction from the message.
+    // instead of the default and strip this instruction from the message.
     const delayInstruction = /^#\s*DELAY:\s*(\d+).*\n\n/;
     const match = input.match(delayInstruction);
     if (match) {
@@ -650,7 +645,9 @@ function makeGreeter(config, initialLastSeenDB) {
         // TODO random values should be parameterized, for testing.
         //      (i.e., move the random calls out of buildGreeting)
         // TODO gifts should be passed in as a parameter.
-        const { greeting, motd } = await buildGreeting(
+        // TODO Split greeting, on-this-day, and MOTD into separate functions.
+        // TODO Come up with better names for on-this-day and MOTD.
+        const { greeting, onThisDay, motd } = await buildGreeting(
           newState.member,
           newState.channel,
           now,
@@ -666,7 +663,27 @@ function makeGreeter(config, initialLastSeenDB) {
         // Wait a few seconds to make the interaction feel a bit more "natural,"
         // then send the greeting.
         setTimeout(() => {
+          // TODO Separate the greeting out from the on-this-day and MOTD, rather
+          // than this unholy cascade it's turned into.
           chan.send(greeting).then(() => {
+            // TODO Consolidate the on-this-day and MOTD sending.
+            // Currently sendMotd has hardcoded delays in it that would need to
+            // be parameterized.
+            if (onThisDay) {
+              setTimeout(() => {
+                chan.sendTyping().catch((err) => {
+                  console.error(
+                    `failed to send typing event for "on this day" message: ${err}`,
+                  );
+                });
+                const onThisDayMsg = `Here's today's **_On This Day_ Update**!\n\n${onThisDay.trim()}`;
+                chan.send(onThisDayMsg).catch((err) => {
+                  console.error(
+                    `failed to send "on this day" message: ${err}`,
+                  );
+                });
+              }, typingDelayMs + 5000);
+            }
             if (motd?.length) {
               sendMotd(motd, chan, typingDelayMs);
             }
@@ -884,8 +901,8 @@ function initClient(config) {
         const n = Math.floor(Math.random() * 100);
         if (n < 20) {
           client.user.setActivity('outside', { type: 'PLAYING' });
-        } else if (n < 50) {
-          const watching = [
+        } else if (n < 60) {
+          const activities = [
             '30 Rock',
             'Parks and Rec',
             'Brooklyn 99',
@@ -897,17 +914,37 @@ function initClient(config) {
             'Roadrunner cartoons',
             'the tide roll away',
             'Bird Game',
+            'The Fast and the Furious',
+            'The Fast and the Furious: Tokyo Drift',
             'The Birds',
+            'Galaxy Quest',
             'Russian dash cam footage',
+            'vegan cooking videos on YouTube',
+            'dirty dirty suet feeding birbs on YouBirb',
             'the world burn 🔥',
+            { type: 'PLAYING', description: 'Quake 2' },
+            { type: 'PLAYING', description: 'Red Dead Redemption' },
+            { type: 'PLAYING', description: 'Sonic the Hedgehog' },
+            { type: 'PLAYING', description: 'Castlevania' },
+            { type: 'PLAYING', description: 'Angry Birds' },
+            { type: 'PLAYING', description: 'The Legend of Zelda' },
+            { type: 'PLAYING', description: 'Ninja Gaiden' },
+            { type: 'PLAYING', description: 'Apex Legends' },
+            { type: 'PLAYING', description: 'Minesweeper' },
+            { type: 'PLAYING', description: 'with fire 🔥' },
+            { type: 'PLAYING', description: 'fast and loose' },
           ];
           const watchingIdx = Math.floor(
-            Math.random() * watching.length,
+            Math.random() * activities.length,
           );
-          client.user.setActivity(watching[watchingIdx], {
-            type: 'WATCHING',
+          const activity = activities[watchingIdx];
+          const activityType = activity.type || 'WATCHING';
+          const activityDescription =
+            activity.description || activity;
+          client.user.setActivity(activityDescription, {
+            type: activityType,
           });
-        } else if (n < 60) {
+        } else if (n < 70) {
           client.user.setActivity('"Surfin\' Bird" by The Trashmen', {
             type: 'LISTENING',
           });
