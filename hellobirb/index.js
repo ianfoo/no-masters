@@ -416,7 +416,12 @@ async function buildGreeting(
 }
 
 // Send messages of the day to the channel.
-function sendMotd(motd, chan, defaultTypingDelay) {
+function sendMotd(
+  chan,
+  motd,
+  delayBeforeSending,
+  defaultTypingDelay,
+) {
   const processMessage = (input) => {
     // If the message specifies a delay at the top of the file, use that
     // instead of the default and strip this instruction from the message.
@@ -431,14 +436,21 @@ function sendMotd(motd, chan, defaultTypingDelay) {
     return { message: input, typingDelay: defaultTypingDelay };
   };
 
-  const oneMinute = 60 * 1000;
+  console.log(
+    `waiting ${delayBeforeSending}ms before sending motd message(s)`,
+  );
+  const standardDelayBeforeTyping = 10000;
+  const delayBeforeTyping =
+    delayBeforeSending >= standardDelayBeforeTyping
+      ? standardDelayBeforeTyping
+      : delayBeforeSending * 0.5;
   setTimeout(() => {
     chan.sendTyping().catch((err) => {
       console.error(
         `failed to send typing event during motd: ${err}`,
       );
     });
-  }, oneMinute - 10000);
+  }, delayBeforeTyping);
 
   setTimeout(() => {
     let totalDelay = 0;
@@ -446,27 +458,65 @@ function sendMotd(motd, chan, defaultTypingDelay) {
       const { message, typingDelay } = processMessage(rawMsg);
       totalDelay += typingDelay;
       setTimeout(() => {
-        chan.send(message.trim()).then(() => {
-          console.log(
-            `${new Date()}: sent message of the day #${i + 1} (${
-              message.length
-            } chars, ${typingDelay} ms incremental delay, ${totalDelay} total delay)`,
-          );
-          // If this isn't the last message, send a typing event to simulate
-          // birb typing another message.
-          if (i < motd.length - 1) {
-            setTimeout(() => {
-              chan.sendTyping().catch((err) => {
-                console.error(
-                  `failed to send typing event during motd: ${err}`,
-                );
-              });
-            }, typingDelay * 0.6);
-          }
-        });
+        chan
+          .send(message.trim())
+          .then(() => {
+            console.log(
+              `sent motd #${i + 1} (${
+                message.length
+              } chars, ${typingDelay}ms incremental delay of ${totalDelay}ms total delay)`,
+            );
+            // If this isn't the last message, send a typing event to simulate
+            // birb typing another message.
+            if (i < motd.length - 1) {
+              setTimeout(() => {
+                chan.sendTyping().catch((err) => {
+                  console.error(
+                    `failed to send typing event during motd: ${err}`,
+                  );
+                });
+              }, typingDelay * 0.6);
+            }
+          })
+          .catch((err) => {
+            console.error(`error sending motd #${i + 1}: ${err}`);
+          });
       }, totalDelay);
     });
-  }, oneMinute);
+  }, delayBeforeSending);
+}
+
+function sendOnThisDay(
+  chan,
+  onThisDay,
+  delayBeforeSending,
+  typingDelayMs,
+) {
+  console.log(
+    `waiting ${delayBeforeSending}ms before sending "on this day" message`,
+  );
+  setTimeout(() => {
+    chan.sendTyping().catch((err) => {
+      console.error(
+        `failed to send typing event for "on this day" message: ${err}`,
+      );
+    });
+    setTimeout(() => {
+      const onThisDayMsg = `Here's today's **_On This Day_** Update! :speaking_head:\n\n${onThisDay.trim()}`;
+      chan
+        .send(onThisDayMsg)
+        .then(() => {
+          console.log(
+            `sent "on this day" message (${onThisDayMsg.length} chars)`,
+          );
+        })
+        .catch((err) => {
+          console.error(
+            `failed to send "on this day" message: ${err}`,
+          );
+        });
+    }, typingDelayMs);
+  }, delayBeforeSending);
 }
 
 // Update last seen entry for this guild member. Will still return
@@ -669,23 +719,29 @@ function makeGreeter(config, initialLastSeenDB) {
             // TODO Consolidate the on-this-day and MOTD sending.
             // Currently sendMotd has hardcoded delays in it that would need to
             // be parameterized.
+            const randomDelayWithMinimum = (baseMin, maxExtraMin) => {
+              const oneMinute = 60 * 1000;
+              const delay =
+                baseMin * oneMinute +
+                Math.floor(Math.random() * maxExtraMin) * oneMinute;
+              return delay;
+            };
             if (onThisDay) {
-              setTimeout(() => {
-                chan.sendTyping().catch((err) => {
-                  console.error(
-                    `failed to send typing event for "on this day" message: ${err}`,
-                  );
-                });
-                const onThisDayMsg = `Here's today's **_On This Day_ Update**!\n\n${onThisDay.trim()}`;
-                chan.send(onThisDayMsg).catch((err) => {
-                  console.error(
-                    `failed to send "on this day" message: ${err}`,
-                  );
-                });
-              }, typingDelayMs + 5000);
+              const onThisDayDelayMs = devMode.alwaysGreet
+                ? 1000
+                : randomDelayWithMinimum(10, 8);
+              sendOnThisDay(
+                chan,
+                onThisDay,
+                onThisDayDelayMs,
+                typingDelayMs,
+              );
             }
             if (motd?.length) {
-              sendMotd(motd, chan, typingDelayMs);
+              const motdDelayMs = devMode.alwaysGreet
+                ? 2000
+                : randomDelayWithMinimum(5, 3);
+              sendMotd(chan, motd, motdDelayMs, typingDelayMs);
             }
           });
           if (!newState.mute) {
