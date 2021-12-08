@@ -502,7 +502,7 @@ function sendOnThisDay(
       );
     });
     setTimeout(() => {
-      const onThisDayMsg = `Here's today's **_On This Day_** Update! :speaking_head:\n\n${onThisDay.trim()}`;
+      const onThisDayMsg = onThisDay.trim();
       chan
         .send(onThisDayMsg)
         .then(() => {
