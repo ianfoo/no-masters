@@ -86,7 +86,7 @@ function snowfightReact(msg, guildId) {
     '<@250825783755407373>': 0.8,
     '<@807036137989472286>': 0.4,
   };
-  const laughProbability = 1; // specialUsersProbability[target] || 0.2;
+  const laughProbability = specialUsersProbability[target] || 0.2;
 
   if (Math.random() < laughProbability) {
     const taunts = [
