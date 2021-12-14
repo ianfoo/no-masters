@@ -11,7 +11,7 @@ function snowfightReact(msg, guildId) {
   }
 
   const hellobirbMention = '<@891908176356712459>';
-  if (true || embed?.description.includes(hellobirbMention)) {
+  if (embed?.description.includes(hellobirbMention)) {
     // Hellobirb was hit. Exact vengeance.
     const thrower = msg.interaction?.user;
     console.log(`snowball hit by ${thrower}!`);
