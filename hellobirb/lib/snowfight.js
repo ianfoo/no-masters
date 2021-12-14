@@ -70,7 +70,7 @@ function snowfightReact(msg, guildId) {
     }, 5000);
 
     // Hellobirb was hit and has retaliated; we are done here.
-    // return;
+    return;
   }
 
   // Someone else was hit. Maybe laugh at them.
