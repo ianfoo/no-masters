@@ -15,6 +15,7 @@ import tzPkg from 'date-fns-tz';
 import * as http from 'http';
 import glob from 'glob';
 import getWeatherForecast from './lib/weather.js';
+import snowfightReact from './lib/snowfight.js';
 
 const { utcToZonedTime } = tzPkg;
 
@@ -1015,6 +1016,7 @@ function initClient(config) {
 
   client.on('messageCreate', (message) => {
     maybeReact(message, config.watchChannelId);
+    snowfightReact(message, config.guildId);
   });
 
   // Watch for users turning on their cameras in a voice channel.
@@ -1030,6 +1032,7 @@ console.log('starting up!');
 // Read config and init client.
 dotEnvConfig();
 const config = {
+  guildId: process.env.GUILD_ID,
   watchChannelId: process.env.WATCH_VOICE_CHANNEL_ID,
   announceChannelId: process.env.ANNOUNCE_CHANNEL_ID,
   presenceRoleId: process.env.PRESENCE_ROLE_ID,
