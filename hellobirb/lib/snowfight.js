@@ -111,7 +111,7 @@ function snowfightReact(msg, guildId) {
   }
 
   // Look for keywords to react to in the hit message.
-  if (embed?.description.contains('doot doot')) {
+  if (embed?.description.includes('doot doot')) {
     const dootDootGifs = [
       'https://c.tenor.com/HcnatKp3NkkAAAAC/trumpet-middlefinger.gif',
       'https://c.tenor.com/gYGHTkX9PX0AAAAd/louis-armstrong.gif',
