@@ -83,8 +83,8 @@ function snowfightReact(msg, guildId) {
   const target = targetResults[0];
 
   const specialUsersProbability = {
-    '<@250825783755407373>': 0.8,
-    '<@807036137989472286>': 0.4,
+    '<@622099233176158218>': 0.4, // Will
+    '<@250825783755407373>': 0.4, // Zaq
   };
   const laughProbability = specialUsersProbability[target] || 0.2;
 
@@ -103,6 +103,43 @@ function snowfightReact(msg, guildId) {
     setTimeout(() => {
       msg.reply(taunt).then(() => {
         console.log(`laughed at snowball target ${target}`);
+      });
+    }, 1000 * 5);
+
+    // Birb has laughed at the target. We're done here.
+    return;
+  }
+
+  // Look for keywords to react to in the hit message.
+  if (embed?.description.contains('doot doot')) {
+    const dootDootGifs = [
+      'https://c.tenor.com/HcnatKp3NkkAAAAC/trumpet-middlefinger.gif',
+      'https://c.tenor.com/gYGHTkX9PX0AAAAd/louis-armstrong.gif',
+      'https://c.tenor.com/6YLyrvVA5X4AAAAd/muppets-muppet-show.gif',
+      'https://c.tenor.com/bSLC9u5P5CUAAAAC/m%C3%BAsica-instrument.gif',
+      'https://c.tenor.com/o9RZrhOOFj8AAAAC/spongebob-sweet-victory.gif',
+      'https://c.tenor.com/ySRwF-YfeHUAAAAC/basketball-wives-woot-woot.gif',
+    ];
+    const dootDootGif =
+      dootDootGifs[Math.floor(Math.random() * dootDootGifs.length)];
+    const reply = {
+      embeds: [
+        {
+          title: 'The trumpets of war :trumpet:',
+          description: '**DOOT DOOT, MOFOS!**',
+          color: 'FFD700',
+          image: {
+            url: dootDootGif,
+          },
+        },
+      ],
+    };
+    setTimeout(() => {
+      msg.channel.sendTyping();
+    }, 2000);
+    setTimeout(() => {
+      msg.reply(reply).then(() => {
+        console.log('offered doot doot war cry after snowball hit');
       });
     }, 1000 * 5);
   }
