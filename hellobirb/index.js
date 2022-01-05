@@ -213,7 +213,7 @@ async function buildGreeting(
   }
 
   const motd = [];
-  let onThisDay = '';
+  let onThisDay;
 
   if (!isToday(latestGreetingTime) || alwaysFirst) {
     if (numOnline === 1 || alwaysFirst) {
@@ -259,13 +259,30 @@ async function buildGreeting(
         '0',
       )}-${String(now.getDate()).padStart(2, '0')}`;
       const yearMonthDay = `${now.getFullYear()}-${monthAndDay}`;
-      const onThisDayWithYearFile = `${onThisDayDir}/${yearMonthDay}.txt`;
-      const onThisDayWithoutYearFile = `${onThisDayDir}/${monthAndDay}.txt`;
 
-      if (existsSync(onThisDayWithYearFile)) {
-        onThisDay = readFileSync(onThisDayWithYearFile).toString();
-      } else if (existsSync(onThisDayWithoutYearFile)) {
-        onThisDay = readFileSync(onThisDayWithoutYearFile).toString();
+      const onThisDayWithYearJsonFile = `${onThisDayDir}/${yearMonthDay}.json`;
+      const onThisDayWithYearTextFile = `${onThisDayDir}/${yearMonthDay}.txt`;
+      const onThisDayWithoutYearJsonFile = `${onThisDayDir}/${monthAndDay}.json`;
+      const onThisDayWithoutYearTextFile = `${onThisDayDir}/${monthAndDay}.txt`;
+
+      if (existsSync(onThisDayWithYearJsonFile)) {
+        const contents = readFileSync(
+          onThisDayWithYearJsonFile,
+        ).toString();
+        onThisDay = JSON.parse(contents);
+      } else if (existsSync(onThisDayWithYearTextFile)) {
+        onThisDay = readFileSync(
+          onThisDayWithYearTextFile,
+        ).toString();
+      } else if (existsSync(onThisDayWithoutYearJsonFile)) {
+        const contents = readFileSync(
+          onThisDayWithoutYearJsonFile,
+        ).toString();
+        onThisDay = JSON.parse(contents);
+      } else if (existsSync(onThisDayWithoutYearTextFile)) {
+        onThisDay = readFileSync(
+          onThisDayWithoutYearTextFile,
+        ).toString();
       }
     } catch (err) {
       console.error(`error adding "on this day" content: ${err}`);
@@ -493,6 +510,20 @@ function sendOnThisDay(
   delayBeforeSending,
   typingDelayMs,
 ) {
+  let embed = {
+    title: ':calendar: On This Day! :sparkles:',
+    color: 'B024B1',
+  };
+  if (onThisDay instanceof Object) {
+    // If onThisDay is an object, add its fields to the embed.
+    embed = { ...embed, ...onThisDay };
+  } else {
+    // If onThisDay is a string, add it to the embed as the description.
+    embed.description = onThisDay.trim();
+  }
+  const message = {
+    embeds: [embed],
+  };
   console.log(
     `waiting ${delayBeforeSending}ms before sending "on this day" message`,
   );
@@ -503,12 +534,11 @@ function sendOnThisDay(
       );
     });
     setTimeout(() => {
-      const onThisDayMsg = onThisDay.trim();
       chan
-        .send(onThisDayMsg)
+        .send(message)
         .then(() => {
           console.log(
-            `sent "on this day" message (${onThisDayMsg.length} chars)`,
+            `sent "on this day" message (${message.embeds[0].description.length} chars)`,
           );
         })
         .catch((err) => {
