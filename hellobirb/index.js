@@ -1,5 +1,4 @@
 import { Client, Intents } from 'discord.js';
-import { config as dotEnvConfig } from 'dotenv';
 import { readFileSync, renameSync, existsSync, mkdirSync } from 'fs';
 import { writeFile } from 'fs/promises';
 import {
@@ -16,6 +15,7 @@ import * as http from 'http';
 import glob from 'glob';
 import getWeatherForecast from './lib/weather.js';
 import snowfightReact from './lib/snowfight.js';
+import readConfig from './lib/config.js';
 
 const { utcToZonedTime } = tzPkg;
 
@@ -1060,29 +1060,7 @@ function initClient(config) {
 console.log('starting up!');
 
 // Read config and init client.
-dotEnvConfig();
-const config = {
-  guildId: process.env.GUILD_ID,
-  watchChannelId: process.env.WATCH_VOICE_CHANNEL_ID,
-  announceChannelId: process.env.ANNOUNCE_CHANNEL_ID,
-  presenceRoleId: process.env.PRESENCE_ROLE_ID,
-  botTimeZone: process.env.BOT_TIME_ZONE || 'UTC',
-  mondayMorningAddendum: process.env.MONDAY_MORNING_ADDENDUM,
-  weatherLocation: process.env.WEATHER_GOV_OFFICE_AND_GRID,
-  typingDelayMs: process.env.TYPING_DELAY_MS || 3000,
-
-  // Dev Mode Options:
-  // alwaysGreet
-  // alwaysFirst
-  // alwaysGift
-  // alwaysExtraGift
-  // alwaysGoodToSeeYou
-  // alwaysWeather
-  devMode: (process.env.DEV_MODE || '')
-    .split(',')
-    .filter((s) => s.length > 0)
-    .reduce((o, key) => ({ ...o, [key.trim()]: true }), {}),
-};
+const config = readConfig();
 const client = initClient(config);
 
 // Start our ping/healthcheck endpoint.
