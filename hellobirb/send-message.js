@@ -26,13 +26,15 @@ async function sendMessage(file) {
   if (file.endsWith('.json') || fileContents[0] === '{') {
     // Message is a JSOn file, so make a message with an embed.
     const msg = JSON.parse(fileContents);
-    let embed = {
-      title: ':calendar: On This Day! :sparkles:',
-      color: 'B024B1',
-    };
-    embed = { ...embed, ...msg };
+    // let embed = {
+    //   title: ':calendar: On This Day! :sparkles:',
+    //   color: 'B024B1',
+    // };
+    // embed = { ...embed, ...msg.embed };
+    const { embed } = msg;
     message = {
       embeds: [embed],
+      content: msg.content,
     };
   } else {
     // Message is a string, so just trim it and set it as the message.
