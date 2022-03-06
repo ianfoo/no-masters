@@ -4,6 +4,7 @@ import { writeFile } from 'fs/promises';
 import {
   differenceInDays,
   differenceInHours,
+  formatDistance,
   isMonday,
   isFirstDayOfMonth,
   isFriday,
@@ -175,6 +176,8 @@ async function buildGreeting(
       const beenALongTime = daysSinceLastSeen >= 2 * goodToSeeYouDays;
       if (beenALongTime) {
         greeting += " I've missed you!";
+        const howLong = formatDistance(lastSeen, now);
+        greeting += ` It's been ${howLong} since we've seen you!`;
       }
       greeting += ' :relaxed:';
     }
