@@ -976,7 +976,11 @@ function initClient(config) {
   // Announce (locally) when the bot is ready.
   client.once('ready', () => {
     console.log("Cheep cheep! I'm ready to greet!");
-    client.user.setActivity('for friends', { type: 'WATCHING' });
+
+    if (client.user.presence.activities.length === 0) {
+      console.log('Setting initial bot activity');
+      client.user.setActivity('for friends', { type: 'WATCHING' });
+    }
 
     // Occasionally update activity status.
     const thirtyMinutes = 30 * 60 * 1000;
