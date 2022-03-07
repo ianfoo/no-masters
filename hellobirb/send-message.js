@@ -31,10 +31,14 @@ async function sendMessage(file) {
     //   color: 'B024B1',
     // };
     // embed = { ...embed, ...msg.embed };
-    const { embed } = msg;
     message = {
-      embeds: [embed],
-      content: msg.content,
+      embeds: [
+        {
+          title: 'From the Desk of Birb :bird:',
+          color: 'B024B1',
+          ...msg,
+        },
+      ],
     };
   } else {
     // Message is a string, so just trim it and set it as the message.
